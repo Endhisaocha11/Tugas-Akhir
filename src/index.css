@@ -1,0 +1,30 @@
+@import "tailwindcss";
+
+@theme {
+  --color-primary: #F59E0B;
+  --color-bg-warm: #FFFBF7;
+  --color-secondary-warm: #FFF7ED;
+  --color-text-main: #374151;
+  
+  --font-sans: "Inter", ui-sans-serif, system-ui, sans-serif;
+  --font-display: "Outfit", sans-serif;
+}
+
+@layer base {
+  body {
+    @apply bg-bg-warm text-text-main font-sans antialiased;
+  }
+}
+
+@layer components {
+  .btn-primary {
+    @apply bg-primary hover:bg-amber-600 text-white font-medium px-6 py-3 rounded-xl transition-all shadow-lg shadow-amber-200/50 flex items-center justify-center gap-2;
+  }
+  .btn-secondary {
+    @apply bg-secondary-warm hover:bg-white text-primary border border-primary/20 font-medium px-6 py-3 rounded-xl transition-all flex items-center justify-center gap-2;
+  }
+  .card-premium {
+    @apply bg-white border border-amber-100/50 rounded-3xl p-6 shadow-sm hover:shadow-md transition-shadow;
+  }
+}
+

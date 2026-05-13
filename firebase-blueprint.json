@@ -1,0 +1,80 @@
+{
+  "entities": {
+    "UserProfile": {
+      "title": "User Profile",
+      "description": "User metadata and role information",
+      "type": "object",
+      "properties": {
+        "uid": { "type": "string" },
+        "email": { "type": "string", "format": "email" },
+        "role": { "type": "string", "enum": ["SUPER_ADMIN", "USER"] },
+        "onboardingCompleted": { "type": "boolean" },
+        "createdAt": { "type": "number" }
+      },
+      "required": ["uid", "email", "role"]
+    },
+    "CatProfile": {
+      "title": "Cat Profile",
+      "description": "Information about the cat and calculated feeding targets",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "ownerId": { "type": "string" },
+        "name": { "type": "string" },
+        "photoUrl": { "type": "string" },
+        "gender": { "type": "string", "enum": ["male", "female"] },
+        "age": { "type": "number" },
+        "weight": { "type": "number" },
+        "isSterilized": { "type": "boolean" },
+        "bodyCondition": { "type": "integer" },
+        "kiloCaloriesPerKg": { "type": "number" },
+        "dailyCalorieTarget": { "type": "number" },
+        "dailyGramTarget": { "type": "number" },
+        "feedingSchedule": { "type": "array" }
+      },
+      "required": ["ownerId", "name", "weight"]
+    },
+    "FeedingLog": {
+      "title": "Feeding Log",
+      "description": "Record of a feeding event",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "catId": { "type": "string" },
+        "timestamp": { "type": "number" },
+        "amountRequested": { "type": "number" },
+        "amountDispensed": { "type": "number" },
+        "status": { "type": "string", "enum": ["success", "failed", "warning"] }
+      }
+    },
+    "DeviceStatus": {
+      "title": "Device Status",
+      "description": "Real-time state of the physical feeder",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "isOnline": { "type": "boolean" },
+        "foodStockLevel": { "type": "number" },
+        "servoStatus": { "type": "string" }
+      }
+    }
+  },
+  "firestore": {
+    "/users/{uid}": {
+      "schema": "UserProfile",
+      "description": "User profiles"
+    },
+    "/cats/{catId}": {
+      "schema": "CatProfile",
+      "description": "Cat profiles"
+    },
+    "/cats/{catId}/logs/{logId}": {
+      "schema": "FeedingLog",
+      "description": "Feeding history for a cat"
+    },
+    "/devices/{deviceId}": {
+      "schema": "DeviceStatus",
+      "description": "Real-time device state"
+    }
+  }
+}

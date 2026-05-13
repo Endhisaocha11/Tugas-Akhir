@@ -1,0 +1,8 @@
+{
+  "name": "FelineGuard IoT - Smart Cat Feeder",
+  "description": "Modern SaaS-style IoT dashboard for cat feeding monitoring and FLUTD prevention.",
+  "requestFramePermissions": [],
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}
