@@ -35,7 +35,7 @@ export function CatProfilePage() {
            <div className="w-48 h-48 rounded-[48px] overflow-hidden border-8 border-bg-warm shadow-2xl relative">
               <img src="https://api.dicebear.com/7.x/bottts/svg?seed=Luna" alt="Cat" className="w-full h-full object-cover" />
            </div>
-           <button className="absolute -bottom-2 -right-2 w-12 h-12 bg-primary text-white rounded-2xl flex items-center justify-center shadow-lg hover:scale-110 transition-all border-4 border-white">
+           <button type="button" title="Change cat photo" className="absolute -bottom-2 -right-2 w-12 h-12 bg-primary text-white rounded-2xl flex items-center justify-center shadow-lg hover:scale-110 transition-all border-4 border-white">
               <Camera className="w-5 h-5" />
            </button>
         </div>

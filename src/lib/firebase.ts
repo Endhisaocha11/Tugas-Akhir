@@ -1,20 +1,38 @@
-import { initializeApp } from 'firebase/app';
+import { getApps, initializeApp } from 'firebase/app';
 import { getAuth } from 'firebase/auth';
-import { getFirestore, doc, getDocFromServer } from 'firebase/firestore';
+import { getFirestore } from 'firebase/firestore';
+import { getDatabase } from 'firebase/database';
 import firebaseConfig from '../../firebase-applet-config.json';
 
 const app = initializeApp(firebaseConfig);
-export const db = getFirestore(app, firebaseConfig.firestoreDatabaseId);
+
+// Initialize Firebase Authentication
 export const auth = getAuth(app);
 
-// Connectivity check
-async function testConnection() {
-  try {
-    await getDocFromServer(doc(db, '_connection_test_', 'check'));
-  } catch (error) {
-    if (error instanceof Error && (error.message.includes('offline') || error.message.includes('permission'))) {
-      console.warn("Firebase connection status:", error.message);
-    }
-  }
+// Initialize Firestore with optional database ID if provided
+const db = (firebaseConfig as any).firestoreDatabaseId 
+  ? getFirestore(app, (firebaseConfig as any).firestoreDatabaseId)
+  : getFirestore(app);
+
+export { db };
+
+// Initialize Realtime Database if databaseURL is provided
+let rtdb: any = null;
+if ((firebaseConfig as any).databaseURL) {
+  rtdb = getDatabase(app, (firebaseConfig as any).databaseURL);
+  console.log('Realtime Database initialized');
 }
-testConnection();
+
+export { rtdb };
+
+export const secondaryApp =
+  getApps().find(
+    (app) => app.name === 'Secondary'
+  ) ||
+  initializeApp(firebaseConfig, 'Secondary');
+
+export const secondaryAuth =
+  getAuth(secondaryApp);  
+  
+// Log Firebase initialization status
+console.log('Firebase initialized with projectId:', firebaseConfig.projectId);

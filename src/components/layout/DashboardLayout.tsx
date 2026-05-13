@@ -10,10 +10,12 @@ import {
   LogOut,
   Bell,
   Search,
-  ChevronDown
+  ChevronDown,
+  Users
 } from 'lucide-react';
 import { useAuth } from '../../lib/AuthContext';
 import { auth } from '../../lib/firebase';
+import { UserRole } from '../../types';
 import { cn } from '../../lib/utils';
 import { motion } from 'motion/react';
 
@@ -21,31 +23,42 @@ interface SidebarItem {
   id: string;
   label: string;
   icon: React.ElementType;
+  adminOnly?: boolean;
 }
 
 const sidebarItems: SidebarItem[] = [
   { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard },
-  { id: 'feeding-control', label: 'Feeding Control', icon: Utensils },
+  { id: 'feeding-control', label: 'Feeding Control', icon: Utensils, adminOnly: true },
   { id: 'cat-profile', label: 'Cat Profile', icon: Cat },
   { id: 'history', label: 'Feeding History', icon: History },
   { id: 'analytics', label: 'Analytics', icon: BarChart3 },
   { id: 'education', label: 'Education', icon: BookOpen },
-  { id: 'settings', label: 'Device Settings', icon: Settings },
+  { id: 'settings', label: 'Device Settings', icon: Settings, adminOnly: true },
+  { id: 'user-settings', label: 'User Settings', icon: Users, adminOnly: true },
 ];
 
 export function DashboardLayout({ 
   children, 
   activeTab, 
-  onTabChange 
+  onTabChange,
+  userRole = UserRole.USER
 }: { 
   children: React.ReactNode;
   activeTab: string;
   onTabChange: (id: string) => void;
+  userRole?: UserRole;
 }) {
   const { user, profile } = useAuth();
+  const isAdmin = userRole === UserRole.SUPER_ADMIN;
+
+  // Filter sidebar items based on role
+  const filteredItems = sidebarItems.filter(item => {
+    if (item.adminOnly && !isAdmin) return false;
+    return true;
+  });
 
   return (
-    <div className="flex min-h-screen bg-[#FFFBF7]">
+    <div className="flex min-h-screen bg-bg-warm">
       {/* Sidebar */}
       <aside className="w-72 bg-white border-r border-amber-100 flex flex-col fixed inset-y-0 shadow-sm z-50">
         <div className="p-8">
@@ -58,7 +71,7 @@ export function DashboardLayout({
         </div>
 
         <nav className="flex-1 px-4 space-y-1">
-          {sidebarItems.map((item) => (
+          {filteredItems.map((item) => (
             <button
               key={item.id}
               onClick={() => onTabChange(item.id)}
@@ -68,12 +81,16 @@ export function DashboardLayout({
                   ? "bg-secondary-warm text-primary font-semibold"
                   : "text-gray-400 hover:text-text-main hover:bg-gray-50"
               )}
+              title={item.adminOnly && !isAdmin ? 'Admin only' : undefined}
             >
               <item.icon className={cn(
                 "w-5 h-5",
                 activeTab === item.id ? "text-primary" : "text-gray-400 group-hover:text-text-main"
               )} />
               {item.label}
+              {item.adminOnly && !isAdmin && (
+                <span className="ml-auto text-xs bg-gray-100 px-2 py-0.5 rounded text-gray-500">Admin</span>
+              )}
               {activeTab === item.id && (
                 <motion.div 
                   layoutId="activeTab"
@@ -112,12 +129,12 @@ export function DashboardLayout({
             <div className="flex flex-col items-end">
               <span className="text-xs font-semibold text-primary bg-amber-50 px-2 py-0.5 rounded-full mb-1">
                 {profile?.role === 'SUPER_ADMIN' ? 'Super Admin' : 'Family Member'}
-              </span>
-              <span className="text-sm font-bold text-text-main">{profile?.email.split('@')[0]}</span>
+              </span>{profile?.email?.split('@')[0] || 'User'}
+              <span className="text-sm font-bold text-text-main"></span>
             </div>
             
             <div className="relative group">
-              <button className="w-10 h-10 rounded-2xl bg-secondary-warm flex items-center justify-center border border-amber-100 hover:shadow-md transition-all">
+              <button className="w-10 h-10 rounded-2xl bg-secondary-warm flex items-center justify-center border border-amber-100 hover:shadow-md transition-all" title="Notifications" aria-label="Notifications">
                 <Bell className="w-5 h-5 text-primary" />
                 <span className="absolute top-0 right-0 w-3 h-3 bg-red-500 border-2 border-white rounded-full"></span>
               </button>

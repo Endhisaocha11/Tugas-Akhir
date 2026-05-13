@@ -99,7 +99,7 @@ export function Dashboard() {
       <div className="flex items-end justify-between">
         <div>
           <h2 className="text-3xl font-display font-bold text-text-main mb-1">
-            Hello, {profile?.email.split('@')[0]}! 👋
+            Hello, {profile?.email?.split('@')[0] || 'User'}👋
           </h2>
           <p className="text-gray-400">Here's what's happening with <span className="text-primary font-bold">{cat?.name || 'your cat'}</span> today.</p>
         </div>

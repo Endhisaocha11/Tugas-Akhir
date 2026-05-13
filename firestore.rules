@@ -1,9 +1,10 @@
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
-    // Default deny
+    // For development: Allow signed-in users to read/write
+    // For production: Replace with more restrictive rules
     match /{document=**} {
-      allow read, write: if false;
+      allow read, write: if request.auth != null;
     }
 
     // Common helpers

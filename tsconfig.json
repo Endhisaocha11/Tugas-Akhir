@@ -10,11 +10,14 @@
       "DOM.Iterable"
     ],
     "skipLibCheck": true,
+    "forceConsistentCasingInFileNames": true,
+    "strict": true,
     "moduleResolution": "bundler",
     "isolatedModules": true,
     "moduleDetection": "force",
     "allowJs": true,
     "jsx": "react-jsx",
+    "types": ["vite/client"],
     "paths": {
       "@/*": [
         "./*"

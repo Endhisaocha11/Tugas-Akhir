@@ -42,7 +42,7 @@ export function FeedingControl() {
 
   if (!isAdmin) {
     return (
-      <div className="flex flex-col items-center justify-center p-12 bg-white rounded-[40px] border border-amber-100 shadow-sm min-h-[400px]">
+      <div className="flex flex-col items-center justify-center p-12 bg-white rounded-[40px] border border-amber-100 shadow-sm min-h-100">
         <div className="w-20 h-20 bg-amber-50 rounded-full flex items-center justify-center mb-6">
            <Lock className="text-primary w-10 h-10" />
         </div>
@@ -78,7 +78,7 @@ export function FeedingControl() {
             <div className="space-y-6">
               <div className="space-y-4">
                 <label className="text-sm font-bold text-gray-400 uppercase tracking-widest px-2">Serving Size (Grams)</label>
-                <div className="flex items-center gap-8 bg-gray-50 p-8 rounded-[32px] border border-transparent transition-all focus-within:border-primary/20">
+                <div className="flex items-center gap-8 bg-gray-50 p-8 rounded-4xl border border-transparent transition-all focus-within:border-primary/20">
                    <div className="flex-1 space-y-2">
                      <input 
                        type="range" 
@@ -86,6 +86,7 @@ export function FeedingControl() {
                        value={feedingAmount}
                        onChange={(e) => setFeedingAmount(parseInt(e.target.value))}
                        className="w-full accent-primary"
+                       aria-label="Serving size in grams"
                      />
                      <div className="flex justify-between text-[10px] font-black text-gray-300 uppercase italic">
                        <span>Snack</span>
@@ -117,7 +118,7 @@ export function FeedingControl() {
                     <>Feed Now <Utensils className="w-5 h-5" /></>
                   )}
                 </button>
-                <button className="p-5 btn-secondary group">
+                <button className="p-5 btn-secondary group" title="Reset feeding amount to default" aria-label="Reset feeding amount">
                   <RotateCcw className="w-6 h-6 group-hover:rotate-180 transition-transform duration-500" />
                 </button>
               </div>
@@ -141,7 +142,7 @@ export function FeedingControl() {
                 </div>
                 <h3 className="text-xl font-display font-bold text-text-main">Active Schedule</h3>
               </div>
-              <button className="px-4 py-2 bg-text-main text-white rounded-xl text-xs font-bold hover:bg-black transition-colors flex items-center gap-2">
+              <button className="px-4 py-2 bg-text-main text-white rounded-xl text-xs font-bold hover:bg-black transition-colors flex items-center gap-2" aria-label="Add new feeding schedule slot">
                  <Plus className="w-4 h-4" /> Add Slot
               </button>
            </div>
@@ -165,10 +166,10 @@ export function FeedingControl() {
                      <button className={cn(
                        "w-12 h-12 rounded-2xl flex items-center justify-center border-2 transition-all",
                        slot.active ? "bg-green-50 border-green-500 text-green-600" : "bg-white border-gray-200 text-gray-300"
-                     )}>
+                     )} title={`Toggle schedule slot at ${slot.time}`} aria-label={`Toggle feeding slot at ${slot.time}`}>
                        <Check className="w-5 h-5" />
                      </button>
-                     <button className="w-12 h-12 rounded-2xl flex items-center justify-center bg-white border border-gray-100 text-gray-300 hover:text-red-500 hover:border-red-100 transition-all opacity-0 group-hover:opacity-100">
+                     <button className="w-12 h-12 rounded-2xl flex items-center justify-center bg-white border border-gray-100 text-gray-300 hover:text-red-500 hover:border-red-100 transition-all opacity-0 group-hover:opacity-100" title="Delete schedule slot" aria-label="Delete feeding schedule slot">
                         <Trash2 className="w-5 h-5" />
                      </button>
                   </div>
@@ -176,7 +177,7 @@ export function FeedingControl() {
               ))}
            </div>
 
-           <div className="mt-8 p-6 bg-secondary-warm border border-amber-100 rounded-[32px] flex items-center gap-4">
+           <div className="mt-8 p-6 bg-secondary-warm border border-amber-100 rounded-4xl flex items-center gap-4">
               <div className="w-10 h-10 bg-white rounded-xl flex items-center justify-center shadow-sm">
                  <Settings2 className="w-5 h-5 text-primary" />
               </div>

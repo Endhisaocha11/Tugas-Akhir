@@ -1,322 +1,747 @@
 import React, { useState } from 'react';
-import { motion, AnimatePresence } from 'motion/react';
-import { Cat, ChevronRight, Scale, Activity, Calculator, CheckCircle2, Heart, Info } from 'lucide-react';
-import { db, auth } from '../../lib/firebase';
-import { doc, setDoc, updateDoc } from 'firebase/firestore';
+
+import {
+  ChevronRight,
+  ChevronLeft,
+  Heart,
+  CheckCircle2,
+} from 'lucide-react';
+
+import {
+  doc,
+  setDoc,
+  getDoc,
+} from 'firebase/firestore';
+
+import { db } from '../../lib/firebase';
+
 import { useAuth } from '../../lib/AuthContext';
+
 import { cn } from '../../lib/utils';
 
-const steps = [
-  { id: 1, title: 'Identity', icon: Cat },
-  { id: 2, title: 'Physical', icon: Scale },
-  { id: 3, title: 'Health', icon: Activity },
-  { id: 4, title: 'Targets', icon: Calculator },
-];
+// =========================
+// CALCULATE FORMULA
+// =========================
+
+function calculateTargets({
+  weight,
+  isSterilized,
+  gender,
+  bodyCondition,
+  kiloCaloriesPerKg = 4000,
+}: {
+  weight: number;
+  isSterilized: boolean;
+  gender: string;
+  bodyCondition: number;
+  kiloCaloriesPerKg?: number;
+}) {
+  const rer =
+    70 * Math.pow(weight, 0.75);
+
+  const Fm = isSterilized
+    ? 1.2
+    : 1.4;
+
+  const Fg =
+    gender === 'male'
+      ? 0.95
+      : 1;
+
+  const Fo =
+    bodyCondition <= 2
+      ? 1.1
+      : bodyCondition >= 4
+      ? 0.85
+      : 1;
+
+  const dailyCalorieTarget =
+    rer * Fm * Fg * Fo;
+
+  const dailyGramTarget =
+    (dailyCalorieTarget /
+      kiloCaloriesPerKg) *
+    1000;
+
+  return {
+    dailyCalorieTarget:
+      Math.round(
+        dailyCalorieTarget
+      ),
+
+    dailyGramTarget:
+      Math.round(
+        dailyGramTarget
+      ),
+  };
+}
+
+// =========================
+// COMPONENT
+// =========================
 
 export function OnboardingFlow() {
-  const { user, profile } = useAuth();
-  const [step, setStep] = useState(1);
-  const [loading, setLoading] = useState(false);
-  
-  const [formData, setFormData] = useState({
-    name: '',
-    gender: 'male' as 'male' | 'female',
-    age: 2,
-    weight: 4.5,
-    isSterilized: true,
-    bodyCondition: 3 as 1 | 2 | 3 | 4 | 5,
-    kiloCaloriesPerKg: 380, // Target cal/kg food
-  });
+  const { user } = useAuth();
 
-  // Gram = (Fm × Fg × Fo × 70(BB)^0.75) / E
-  // For simplicity, let's condense Fm, Fg, Fo into a single multiplier factor
-  const calculateTargets = () => {
-    const energyRequirementMultiplier = 1.2; // Adjusted for sterilization and activity
-    const rer = 70 * Math.pow(formData.weight, 0.75);
-    const dailyCalorieTarget = rer * energyRequirementMultiplier;
-    const dailyGramTarget = (dailyCalorieTarget / formData.kiloCaloriesPerKg) * 1000;
-    
-    return {
-      dailyCalorieTarget: Math.round(dailyCalorieTarget),
-      dailyGramTarget: Math.round(dailyGramTarget)
-    };
+  const isGuestMode =
+    localStorage.getItem(
+      'appMode'
+    ) === 'guest';
+
+  const [step, setStep] =
+    useState(1);
+
+  const [loading, setLoading] =
+    useState(false);
+
+  const [done, setDone] =
+    useState(false);
+
+  const [form, setForm] =
+    useState({
+      name: '',
+      gender: 'male',
+      age: 2,
+      weight: 4.5,
+      isSterilized: true,
+      bodyCondition: 3,
+      kiloCaloriesPerKg: 4000,
+    });
+
+  // =========================
+  // UPDATE FORM
+  // =========================
+
+  const upd = (
+    patch: Partial<
+      typeof form
+    >
+  ) => {
+    setForm((f) => ({
+      ...f,
+      ...patch,
+    }));
   };
+
+  // =========================
+  // CALCULATE
+  // =========================
+
+  const targets =
+    calculateTargets(form);
+
+  const schedule = [
+    {
+      time: '07:00',
+      label: 'Pagi',
+      amount: Math.round(
+        targets.dailyGramTarget /
+          3
+      ),
+    },
+
+    {
+      time: '13:00',
+      label: 'Siang',
+      amount: Math.round(
+        targets.dailyGramTarget /
+          3
+      ),
+    },
+
+    {
+      time: '19:00',
+      label: 'Malam',
+      amount:
+        targets.dailyGramTarget -
+        2 *
+          Math.round(
+            targets.dailyGramTarget /
+              3
+          ),
+    },
+  ];
+
+  // =========================
+  // NEXT
+  // =========================
 
   const handleNext = () => {
-    if (step < 4) setStep(step + 1);
-    else handleComplete();
-  };
-
-  const handleComplete = async () => {
-    if (!user) return;
-    setLoading(true);
-    const { dailyCalorieTarget, dailyGramTarget } = calculateTargets();
-    
-    try {
-      const catId = `cat_${user.uid}_${Date.now()}`;
-      const catData = {
-        id: catId,
-        ownerId: user.uid,
-        ...formData,
-        dailyCalorieTarget,
-        dailyGramTarget,
-        feedingSchedule: [
-          { time: '07:00', amount: Math.round(dailyGramTarget / 3), label: 'Morning' },
-          { time: '13:00', amount: Math.round(dailyGramTarget / 3), label: 'Afternoon' },
-          { time: '19:00', amount: Math.round(dailyGramTarget / 3), label: 'Dinner' },
-        ]
-      };
-
-      await setDoc(doc(db, 'cats', catId), catData);
-      await updateDoc(doc(db, 'users', user.uid), {
-        onboardingCompleted: true
-      });
-    } catch (err) {
-      console.error(err);
-    } finally {
-      setLoading(false);
+    if (step < 4) {
+      setStep((s) => s + 1);
+      return;
     }
+
+    handleComplete();
   };
+
+  // =========================
+  // COMPLETE
+  // =========================
+
+  const handleComplete =
+    async () => {
+
+      /**
+       * GUEST MODE
+       */
+
+      if (isGuestMode) {
+
+        alert(
+          '🔒 Guest Mode\n\nHubungi Super Admin untuk menyimpan feeding plan, sinkronisasi device, dan analytics penuh.'
+        );
+
+        localStorage.removeItem(
+          'appMode'
+        );
+
+        localStorage.removeItem(
+          'selectedAdminId'
+        );
+
+        localStorage.removeItem(
+          'selectedAdminEmail'
+        );
+
+        window.location.href =
+          '/';
+
+        return;
+      }
+
+      if (!user) return;
+
+      setLoading(true);
+
+      try {
+
+        const catId = `cat_${user.uid}_${Date.now()}`;
+
+        const catData = {
+          id: catId,
+
+          ownerId: user.uid,
+
+          ...form,
+
+          dailyCalorieTarget:
+            targets.dailyCalorieTarget,
+
+          dailyGramTarget:
+            targets.dailyGramTarget,
+
+          feedingSchedule:
+            schedule,
+
+          createdAt:
+            Date.now(),
+
+          updatedAt:
+            Date.now(),
+        };
+
+        // SAVE CAT
+
+        await setDoc(
+          doc(
+            db,
+            'cats',
+            catId
+          ),
+          catData
+        );
+
+        // SAVE USER
+
+        await setDoc(
+          doc(
+            db,
+            'users',
+            user.uid
+          ),
+          {
+            uid: user.uid,
+
+            email:
+              user.email,
+
+            updatedAt:
+              Date.now(),
+          },
+          { merge: true }
+        );
+
+        // GET USER
+
+        await getDoc(
+          doc(
+            db,
+            'users',
+            user.uid
+          )
+        );
+
+        setDone(true);
+
+      } catch (err) {
+
+        console.error(err);
+
+        alert(
+          'Gagal menyimpan data'
+        );
+
+      } finally {
+        setLoading(false);
+      }
+    };
+
+  // =========================
+  // VALIDATION
+  // =========================
+
+  const canNext =
+    step === 1
+      ? form.name
+          .trim()
+          .length > 0
+      : true;
+
+  // =========================
+  // DONE
+  // =========================
+
+  if (done) {
+    return (
+      <div className="min-h-screen bg-[#F8F4EC] flex items-center justify-center p-6">
+
+        <div className="bg-white max-w-md w-full rounded-[32px] p-10 shadow-xl text-center">
+
+          <div className="w-24 h-24 mx-auto rounded-full bg-green-100 flex items-center justify-center mb-6">
+
+            <CheckCircle2 className="w-12 h-12 text-green-600" />
+          </div>
+
+          <h2 className="text-3xl font-black text-[#1F2937] mb-4">
+            Berhasil
+            Disimpan
+          </h2>
+
+          <p className="text-gray-500 leading-relaxed">
+            Profil kucing berhasil
+            disimpan ke sistem
+            FelineGuard.
+          </p>
+
+          <button
+            onClick={() => {
+              window.location.href =
+                '/';
+            }}
+            className="w-full mt-8 bg-amber-600 hover:bg-amber-700 text-white py-4 rounded-2xl font-bold"
+          >
+            Ke Dashboard
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  // =========================
+  // MAIN UI
+  // =========================
 
   return (
-    <div className="min-h-screen bg-[#FFFBF7] flex items-center justify-center p-8">
-      <div className="w-full max-w-4xl">
-        {/* Progress bar */}
-        <div className="mb-12 flex justify-between items-center relative">
-          <div className="absolute top-1/2 left-0 w-full h-0.5 bg-amber-100 -translate-y-1/2 z-0" />
-          {steps.map((s) => (
-            <div key={s.id} className="relative z-10 flex flex-col items-center">
-              <div 
-                className={cn(
-                  "w-12 h-12 rounded-2xl flex items-center justify-center transition-all duration-500 shadow-sm border",
-                  step >= s.id ? "bg-primary text-white border-primary shadow-amber-200" : "bg-white text-gray-300 border-amber-100"
-                )}
-              >
-                <s.icon className="w-5 h-5" />
-              </div>
-              <span className={cn(
-                "mt-2 text-xs font-bold uppercase tracking-wider",
-                step >= s.id ? "text-primary" : "text-gray-300"
-              )}>
-                {s.title}
-              </span>
-            </div>
-          ))}
+    <div className="min-h-screen bg-[#F8F4EC] flex items-center justify-center p-6">
+
+      <div className="w-full max-w-3xl">
+
+        {/* HEADER */}
+
+        <div className="text-center mb-10">
+
+          <div className="inline-flex items-center gap-2 bg-white px-5 py-2 rounded-full shadow border border-amber-100">
+
+            <Heart className="w-4 h-4 text-amber-700" />
+
+            <span className="text-sm font-bold text-amber-700">
+              Smart Cat Feeder
+            </span>
+          </div>
+
+          <h1 className="text-5xl font-black text-amber-900 mt-6">
+            Setup Kucingmu
+          </h1>
+
+          <p className="text-gray-500 mt-3 text-lg">
+            Nutrisi sehat &
+            monitoring otomatis
+            untuk kucing
+            kesayangan 🐾
+          </p>
         </div>
 
-        <div className="bg-white rounded-[40px] shadow-xl shadow-amber-100 border border-amber-50 p-12 relative overflow-hidden">
-           <AnimatePresence mode="wait">
-             {step === 1 && (
-               <motion.div 
-                 key="step1"
-                 initial={{ opacity: 0, x: 20 }}
-                 animate={{ opacity: 1, x: 0 }}
-                 exit={{ opacity: 0, x: -20 }}
-                 className="space-y-8"
-               >
-                 <div>
-                    <h2 className="text-4xl font-display font-bold text-text-main mb-2">Meow! Who are we feeding?</h2>
-                    <p className="text-gray-400">Let's start with basic identity to personalize the care plan.</p>
-                 </div>
-                 <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
-                    <div className="space-y-2">
-                       <label className="text-sm font-bold text-gray-500 uppercase tracking-widest px-2">Cat Name</label>
-                       <input 
-                         type="text" 
-                         value={formData.name}
-                         onChange={(e) => setFormData({...formData, name: e.target.value})}
-                         placeholder="e.g. Luna"
-                         className="w-full px-6 py-4 bg-gray-50 border border-transparent focus:border-primary/30 rounded-2xl outline-none"
-                       />
-                    </div>
-                    <div className="space-y-2">
-                       <label className="text-sm font-bold text-gray-500 uppercase tracking-widest px-2">Gender</label>
-                       <div className="flex gap-4">
-                          <button 
-                            onClick={() => setFormData({...formData, gender: 'male'})}
-                            className={cn(
-                              "flex-1 py-4 rounded-2xl border transition-all font-semibold",
-                              formData.gender === 'male' ? "bg-primary text-white border-primary shadow-lg shadow-amber-200" : "bg-gray-50 text-gray-400 border-transparent hover:border-amber-200"
-                            )}
-                          >
-                            Male
-                          </button>
-                          <button 
-                            onClick={() => setFormData({...formData, gender: 'female'})}
-                            className={cn(
-                              "flex-1 py-4 rounded-2xl border transition-all font-semibold",
-                              formData.gender === 'female' ? "bg-primary text-white border-primary shadow-lg shadow-amber-200" : "bg-gray-50 text-gray-400 border-transparent hover:border-amber-200"
-                            )}
-                          >
-                            Female
-                          </button>
-                       </div>
-                    </div>
-                 </div>
-               </motion.div>
-             )}
+        {/* GUEST INFO */}
 
-             {step === 2 && (
-               <motion.div 
-                 key="step2"
-                 initial={{ opacity: 0, x: 20 }}
-                 animate={{ opacity: 1, x: 0 }}
-                 exit={{ opacity: 0, x: -20 }}
-                 className="space-y-8"
-               >
-                 <div>
-                    <h2 className="text-4xl font-display font-bold text-text-main mb-2">Physical Attributes</h2>
-                    <p className="text-gray-400">Weight and age are critical for RER (Resting Energy Requirement) calculation.</p>
-                 </div>
-                 <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
-                    <div className="space-y-2">
-                       <label className="text-sm font-bold text-gray-500 uppercase tracking-widest px-2">Weight (kg)</label>
-                       <div className="flex items-center gap-6 bg-gray-50 p-6 rounded-2xl border border-transparent focus-within:border-primary/30">
-                          <input 
-                            type="range"
-                            min="1" max="15" step="0.1"
-                            value={formData.weight}
-                            onChange={(e) => setFormData({...formData, weight: parseFloat(e.target.value)})}
-                            className="flex-1 accent-primary"
-                          />
-                          <span className="text-3xl font-display font-bold text-primary">{formData.weight} <span className="text-sm">kg</span></span>
-                       </div>
-                    </div>
-                    <div className="space-y-2">
-                       <label className="text-sm font-bold text-gray-500 uppercase tracking-widest px-2">Age (Years)</label>
-                       <input 
-                         type="number"
-                         value={formData.age}
-                         onChange={(e) => setFormData({...formData, age: parseFloat(e.target.value)})}
-                         className="w-full px-6 py-4 bg-gray-50 border border-transparent focus:border-primary/30 rounded-2xl outline-none text-2xl font-display font-bold"
-                       />
-                    </div>
-                 </div>
-               </motion.div>
-             )}
+        {isGuestMode && (
+          <div className="mb-8 bg-blue-50 border border-blue-100 rounded-[32px] p-6">
 
-             {step === 3 && (
-               <motion.div 
-                 key="step3"
-                 initial={{ opacity: 0, x: 20 }}
-                 animate={{ opacity: 1, x: 0 }}
-                 exit={{ opacity: 0, x: -20 }}
-                 className="space-y-8"
-               >
-                 <div>
-                    <h2 className="text-4xl font-display font-bold text-text-main mb-2">Health Condition</h2>
-                    <p className="text-gray-400">FLUTD prevention requires adjusting caloric intake for metabolism.</p>
-                 </div>
-                 <div className="space-y-6">
-                    <div className="flex gap-4">
-                       <button 
-                         onClick={() => setFormData({...formData, isSterilized: !formData.isSterilized})}
-                         className={cn(
-                           "flex-1 p-6 rounded-3xl border-2 transition-all text-left flex gap-4 items-center",
-                           formData.isSterilized ? "border-primary bg-amber-50" : "border-gray-100 bg-white"
-                         )}
-                       >
-                         <div className={cn("w-6 h-6 rounded-lg border-2 flex items-center justify-center", formData.isSterilized ? "bg-primary border-primary" : "border-gray-200")}>
-                           {formData.isSterilized && <CheckCircle2 className="w-4 h-4 text-white" />}
-                         </div>
-                         <div>
-                            <p className="font-bold text-text-main">Spayed / Neutered</p>
-                            <p className="text-sm text-gray-400">Adjusts metabolism factors by -20%</p>
-                         </div>
-                       </button>
-                    </div>
-                    
-                    <div className="space-y-4">
-                        <label className="text-sm font-bold text-gray-500 uppercase tracking-widest">Body Condition Score (BCS)</label>
-                        <div className="grid grid-cols-5 gap-4">
-                           {[1,2,3,4,5].map(v => (
-                             <button
-                               key={v}
-                               onClick={() => setFormData({...formData, bodyCondition: v as 1|2|3|4|5})}
-                               className={cn(
-                                 "py-4 rounded-2xl border-2 font-bold transition-all",
-                                 formData.bodyCondition === v ? "bg-primary border-primary text-white" : "border-gray-100 text-gray-300 hover:border-amber-200"
-                               )}
-                             >
-                               {v}
-                               <span className="block text-[10px] font-normal">
-                                 {v === 1 ? 'Thin' : v === 3 ? 'Ideal' : v === 5 ? 'Obese' : ''}
-                               </span>
-                             </button>
-                           ))}
+            <h3 className="font-black text-blue-800 text-xl mb-3">
+              🔒 Guest Mode
+            </h3>
+
+            <p className="text-blue-700 leading-relaxed">
+              Kamu sedang mencoba
+              fitur feeding
+              calculator tanpa
+              menyimpan data.
+            </p>
+
+            <ul className="mt-4 space-y-2 text-sm text-blue-700 list-disc ml-5">
+
+              <li>
+                Menyimpan feeding
+                plan terkunci
+              </li>
+
+              <li>
+                Sinkronisasi device
+                tidak tersedia
+              </li>
+
+              <li>
+                Analytics penuh
+                hanya untuk admin
+              </li>
+
+              <li>
+                Hubungi Super
+                Admin untuk akses
+                penuh
+              </li>
+            </ul>
+          </div>
+        )}
+
+        {/* STEP CONTENT */}
+
+        <div className="bg-white rounded-[32px] p-8 shadow-xl border border-amber-100">
+
+          {/* STEP 1 */}
+
+          {step === 1 && (
+            <div className="space-y-6">
+
+              <div>
+                <label className="block font-bold text-amber-900 mb-3">
+                  Nama Kucing
+                </label>
+
+                <input
+                  aria-label='Tambahkan Nama Kucingmu'
+                  type="text"
+                  value={form.name}
+                  onChange={(e) =>
+                    upd({
+                      name:
+                        e.target
+                          .value,
+                    })
+                  }
+                  placeholder="Contoh: Mochi"
+                  className="w-full px-5 py-4 rounded-2xl border border-amber-200 outline-none focus:border-amber-500"
+                />
+              </div>
+
+              <div>
+                <label className="block font-bold text-amber-900 mb-3">
+                  Jenis Kelamin
+                </label>
+
+                <div className="grid grid-cols-2 gap-4">
+
+                  <button
+                    onClick={() =>
+                      upd({
+                        gender:
+                          'male',
+                      })
+                    }
+                    className={cn(
+                      'py-4 rounded-2xl border font-bold',
+                      form.gender ===
+                        'male'
+                        ? 'bg-amber-500 text-white border-amber-500'
+                        : 'bg-white border-amber-200'
+                    )}
+                  >
+                    Jantan
+                  </button>
+
+                  <button
+                    onClick={() =>
+                      upd({
+                        gender:
+                          'female',
+                      })
+                    }
+                    className={cn(
+                      'py-4 rounded-2xl border font-bold',
+                      form.gender ===
+                        'female'
+                        ? 'bg-amber-500 text-white border-amber-500'
+                        : 'bg-white border-amber-200'
+                    )}
+                  >
+                    Betina
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* STEP 2 */}
+
+          {step === 2 && (
+            <div className="space-y-6">
+
+              <div>
+                <label className="block font-bold text-amber-900 mb-3">
+                  Berat Kucing
+                </label>
+
+                <input
+                  aria-label='Tambahkan Berat Kucingmu dalam kilogram'
+                  type="number"
+                  value={form.weight}
+                  onChange={(e) =>
+                    upd({
+                      weight:
+                        Number(
+                          e.target
+                            .value
+                        ),
+                    })
+                  }
+                  className="w-full px-5 py-4 rounded-2xl border border-amber-200 outline-none"
+                />
+              </div>
+
+              <div>
+                <label className="block font-bold text-amber-900 mb-3">
+                  Umur Kucing
+                </label>
+
+                <input
+                  aria-label='Tambahkan Umur Kucingmu'
+                  type="number"
+                  value={form.age}
+                  onChange={(e) =>
+                    upd({
+                      age: Number(
+                        e.target
+                          .value
+                      ),
+                    })
+                  }
+                  className="w-full px-5 py-4 rounded-2xl border border-amber-200 outline-none"
+                />
+              </div>
+            </div>
+          )}
+
+          {/* STEP 3 */}
+
+          {step === 3 && (
+            <div className="space-y-6">
+
+              <div>
+                <label className="block font-bold text-amber-900 mb-3">
+                  Sudah Steril?
+                </label>
+
+                <div className="grid grid-cols-2 gap-4">
+
+                  <button
+                    onClick={() =>
+                      upd({
+                        isSterilized:
+                          true,
+                      })
+                    }
+                    className={cn(
+                      'py-4 rounded-2xl border font-bold',
+                      form.isSterilized
+                        ? 'bg-amber-500 text-white border-amber-500'
+                        : 'bg-white border-amber-200'
+                    )}
+                  >
+                    Sudah
+                  </button>
+
+                  <button
+                    onClick={() =>
+                      upd({
+                        isSterilized:
+                          false,
+                      })
+                    }
+                    className={cn(
+                      'py-4 rounded-2xl border font-bold',
+                      !form.isSterilized
+                        ? 'bg-amber-500 text-white border-amber-500'
+                        : 'bg-white border-amber-200'
+                    )}
+                  >
+                    Belum
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* STEP 4 */}
+
+          {step === 4 && (
+            <div className="space-y-6">
+
+              {/* RESULT */}
+
+              <div className="bg-amber-50 rounded-3xl p-6 border border-amber-100">
+
+                <h2 className="text-2xl font-black text-amber-900 mb-5">
+                  Hasil Feeding
+                </h2>
+
+                <div className="space-y-4">
+
+                  <div className="flex justify-between">
+                    <span>
+                      Kalori Harian
+                    </span>
+
+                    <span className="font-black">
+                      {
+                        targets.dailyCalorieTarget
+                      } kcal
+                    </span>
+                  </div>
+
+                  <div className="flex justify-between">
+                    <span>
+                      Porsi Harian
+                    </span>
+
+                    <span className="font-black">
+                      {
+                        targets.dailyGramTarget
+                      } gram
+                    </span>
+                  </div>
+                </div>
+              </div>
+
+              {/* SCHEDULE */}
+
+              <div className="bg-white border border-amber-100 rounded-3xl p-6">
+
+                <h3 className="font-black text-xl text-amber-900 mb-5">
+                  Jadwal Feeding
+                </h3>
+
+                <div className="space-y-4">
+
+                  {schedule.map(
+                    (
+                      item,
+                      i
+                    ) => (
+                      <div
+                        key={i}
+                        className="flex items-center justify-between bg-amber-50 rounded-2xl p-4"
+                      >
+                        <div>
+                          <div className="font-bold">
+                            {
+                              item.label
+                            }
+                          </div>
+
+                          <div className="text-sm text-gray-500">
+                            {
+                              item.time
+                            }
+                          </div>
                         </div>
-                    </div>
-                 </div>
-               </motion.div>
-             )}
 
-             {step === 4 && (
-               <motion.div 
-                 key="step4"
-                 initial={{ opacity: 0, x: 20 }}
-                 animate={{ opacity: 1, x: 0 }}
-                 exit={{ opacity: 0, x: -20 }}
-                 className="space-y-8"
-               >
-                 <div className="text-center">
-                    <div className="w-20 h-20 bg-green-100 text-green-600 rounded-full flex items-center justify-center mx-auto mb-6 scale-125">
-                       <CheckCircle2 className="w-10 h-10" />
-                    </div>
-                    <h2 className="text-4xl font-display font-bold text-text-main mb-2">Calculation Complete</h2>
-                    <p className="text-gray-400">Based on the data, here is your cat's recommended daily feeding.</p>
-                 </div>
+                        <div className="font-black text-amber-700">
+                          {
+                            item.amount
+                          }g
+                        </div>
+                      </div>
+                    )
+                  )}
+                </div>
+              </div>
+            </div>
+          )}
+        </div>
 
-                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6 bg-secondary-warm p-8 rounded-[32px] border border-amber-100">
-                    <div className="flex items-center gap-4">
-                       <div className="w-16 h-16 bg-white rounded-2xl flex items-center justify-center shadow-md">
-                          <Calculator className="text-primary w-8 h-8" />
-                       </div>
-                       <div>
-                          <p className="text-2xl font-display font-black text-text-main">{calculateTargets().dailyCalorieTarget} <span className="text-sm font-medium">kcal/day</span></p>
-                          <p className="text-xs text-gray-400 uppercase tracking-wider font-bold">Daily Calorie Target</p>
-                       </div>
-                    </div>
-                    <div className="flex items-center gap-4">
-                       <div className="w-16 h-16 bg-white rounded-2xl flex items-center justify-center shadow-md">
-                          <Scale className="text-primary w-8 h-8" />
-                       </div>
-                       <div>
-                          <p className="text-2xl font-display font-black text-primary">{calculateTargets().dailyGramTarget} <span className="text-sm font-medium">grams/day</span></p>
-                          <p className="text-xs text-gray-400 uppercase tracking-wider font-bold">Recommended Food</p>
-                       </div>
-                    </div>
-                 </div>
+        {/* BUTTON */}
 
-                 <div className="p-6 bg-blue-50 border border-blue-100 rounded-3xl flex gap-4 items-start">
-                    <Info className="text-blue-500 w-6 h-6 shrink-0" />
-                    <p className="text-sm text-blue-800 leading-relaxed">
-                       <strong>FLUTD Warning:</strong> Maintaining an ideal weight reduces pressure on the urinary system. 
-                       This plan is optimized for prevention. Ensure fresh water is always available.
-                    </p>
-                 </div>
-               </motion.div>
-             )}
-           </AnimatePresence>
+        <div className="mt-10 flex gap-4">
 
-           <div className="mt-12 flex justify-between gap-4">
-             {step > 1 && (
-               <button 
-                 disabled={loading}
-                 onClick={() => setStep(step - 1)}
-                 className="btn-secondary px-8"
-               >
-                 Back
-               </button>
-             )}
-             <button 
-               disabled={loading || (step === 1 && !formData.name)}
-               onClick={handleNext}
-               className={cn("btn-primary flex-1 py-5", step === 1 && "ml-auto")}
-             >
-               {step === 4 ? (loading ? 'Finalizing Profile...' : 'Launch Dashboard') : 'Continue Setup'}
-               <ChevronRight className="w-5 h-5 ml-2" />
-             </button>
-           </div>
+          {step > 1 && (
+            <button
+              type="button"
+              onClick={() =>
+                setStep(
+                  (
+                    s
+                  ) =>
+                    s - 1
+                )
+              }
+              className="px-6 py-5 rounded-2xl border border-gray-200 flex items-center gap-2 font-bold"
+            >
+              <ChevronLeft className="w-5 h-5" />
+              Kembali
+            </button>
+          )}
+
+          <button
+            type="button"
+            disabled={
+              (!canNext ||
+              loading) &&
+              !isGuestMode
+            }
+            onClick={
+              handleNext
+            }
+            className={cn(
+              'flex-1 py-5 rounded-2xl font-black flex items-center justify-center gap-2 transition-all',
+              isGuestMode
+                ? 'bg-gray-300 text-gray-600'
+                : 'bg-amber-700 hover:bg-amber-800 text-white',
+              loading &&
+                'opacity-50'
+            )}
+          >
+            {loading
+              ? 'Menyimpan...'
+              : step === 4
+              ? isGuestMode
+                ? '🔒 Save Locked'
+                : 'Simpan & Dashboard'
+              : 'Lanjut'}
+
+            {!loading && (
+              <ChevronRight className="w-5 h-5" />
+            )}
+          </button>
         </div>
       </div>
     </div>

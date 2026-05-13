@@ -1,157 +1,738 @@
 import React, { useState } from 'react';
-import { motion, AnimatePresence } from 'motion/react';
-import { createUserWithEmailAndPassword, signInWithEmailAndPassword } from 'firebase/auth';
-import { auth, db } from '../../lib/firebase';
-import { doc, setDoc } from 'firebase/firestore';
+
+import {
+  motion,
+  AnimatePresence,
+} from 'motion/react';
+
+import {
+  createUserWithEmailAndPassword,
+  signInWithEmailAndPassword,
+} from 'firebase/auth';
+
+import {
+  doc,
+  setDoc,
+  getDoc,
+} from 'firebase/firestore';
+
+import {
+  auth,
+  db,
+} from '../../lib/firebase';
+
 import { UserRole } from '../../types';
-import { Cat, ArrowRight, Mail, Lock, User as UserIcon } from 'lucide-react';
+
+import {
+  Cat,
+  ArrowRight,
+  Mail,
+  Lock,
+  Eye,
+  EyeOff,
+  ShieldCheck,
+  User,
+} from 'lucide-react';
 
 export function AuthScreen() {
-  const [isLogin, setIsLogin] = useState(true);
-  const [email, setEmail] = useState('');
-  const [password, setPassword] = useState('');
-  const [error, setError] = useState('');
-  const [loading, setLoading] = useState(false);
 
-  const handleSubmit = async (e: React.FormEvent) => {
+  // =========================
+  // STATE
+  // =========================
+
+  const [isLogin, setIsLogin] =
+    useState(true);
+
+  const [email, setEmail] =
+    useState('');
+
+  const [password, setPassword] =
+    useState('');
+
+  const [error, setError] =
+    useState('');
+
+  const [loading, setLoading] =
+    useState(false);
+
+  const [
+    showPassword,
+    setShowPassword,
+  ] = useState(false);
+
+  const [
+    showRolePopup,
+    setShowRolePopup,
+  ] = useState(false);
+
+  const [role, setRole] =
+    useState('USER');
+
+  const [
+    selectedMonitor,
+    setSelectedMonitor,
+  ] = useState('');
+
+  const [isNewUser, setIsNewUser] =
+    useState(false);
+
+  // =========================
+  // HANDLE SUBMIT
+  // =========================
+
+  const handleSubmit = async (
+    e: React.FormEvent
+  ) => {
+
     e.preventDefault();
+
     setLoading(true);
+
     setError('');
 
     try {
+
+      // =========================
+      // LOGIN
+      // =========================
+
       if (isLogin) {
-        await signInWithEmailAndPassword(auth, email, password);
-      } else {
-        const userCredential = await createUserWithEmailAndPassword(auth, email, password);
-        const { user } = userCredential;
-        
-        // Initialize user profile
-        await setDoc(doc(db, 'users', user.uid), {
-          uid: user.uid,
-          email: user.email,
-          role: UserRole.USER, // Default to USER, Super Admin is set manually or by first user logic
-          onboardingCompleted: false,
-          createdAt: Date.now()
-        });
+
+        const userCredential =
+          await signInWithEmailAndPassword(
+            auth,
+            email,
+            password
+          );
+
+        const uid =
+          userCredential.user.uid;
+
+        // GET USER DATA
+
+        const userSnap =
+          await getDoc(
+            doc(db, 'users', uid)
+          );
+
+        if (
+          userSnap.exists()
+        ) {
+
+          const data =
+            userSnap.data();
+
+          const userRole =
+            data.role || 'USER';
+
+          setRole(userRole);
+
+          setIsNewUser(
+            data.onboardingCompleted === false
+          );
+
+          setShowRolePopup(true);
+        }
       }
+
+      // =========================
+      // REGISTER
+      // =========================
+
+      else {
+
+        const userCredential =
+          await createUserWithEmailAndPassword(
+            auth,
+            email,
+            password
+          );
+
+        const { user } =
+          userCredential;
+
+        await setDoc(
+          doc(
+            db,
+            'users',
+            user.uid
+          ),
+          {
+            uid: user.uid,
+
+            email: user.email,
+
+            role:
+              UserRole.USER,
+
+            onboardingCompleted:
+              false,
+
+            createdAt:
+              Date.now(),
+          }
+        );
+
+        setRole('USER');
+
+        setIsNewUser(true);
+
+        setShowRolePopup(true);
+      }
+
     } catch (err: any) {
-      setError(err.message);
+
+      console.error(err);
+
+      switch (err.code) {
+
+        case 'auth/user-not-found':
+
+          setError(
+            'Tidak ada akun dengan email tersebut'
+          );
+
+          break;
+
+        case 'auth/wrong-password':
+
+          setError(
+            'Password salah'
+          );
+
+          break;
+
+        case 'auth/invalid-credential':
+
+          setError(
+            'Email atau password salah'
+          );
+
+          break;
+
+        case 'auth/email-already-in-use':
+
+          setError(
+            'Email sudah digunakan'
+          );
+
+          break;
+
+        case 'auth/weak-password':
+
+          setError(
+            'Password minimal 6 karakter'
+          );
+
+          break;
+
+        case 'auth/invalid-email':
+
+          setError(
+            'Format email tidak valid'
+          );
+
+          break;
+
+        default:
+
+          setError(
+            'Terjadi kesalahan'
+          );
+      }
+
     } finally {
+
       setLoading(false);
     }
   };
 
+  // =========================
+  // UI
+  // =========================
+
   return (
+
     <div className="min-h-screen flex">
-      {/* Left side: Hero */}
-      <div className="hidden lg:flex lg:w-1/2 bg-primary relative overflow-hidden flex-col justify-between p-16">
-        <div className="relative z-10">
-          <div className="flex items-center gap-3 mb-8">
-            <div className="w-12 h-12 bg-white rounded-2xl flex items-center justify-center shadow-xl">
-              <Cat className="text-primary w-8 h-8" />
+
+      {/* LEFT */}
+
+      <div className="hidden lg:flex lg:w-1/2 bg-gradient-to-br from-amber-700 via-orange-600 to-yellow-500 relative overflow-hidden flex-col justify-between p-16">
+
+        <div>
+
+          <div className="flex items-center gap-3 mb-10">
+
+            <div className="w-14 h-14 bg-white rounded-3xl flex items-center justify-center shadow-2xl">
+
+              <Cat className="w-8 h-8 text-amber-700" />
+
             </div>
-            <h1 className="text-3xl font-display font-bold text-white tracking-tight">FelineGuard</h1>
+
+            <h1 className="text-4xl font-black text-white">
+              FelineGuard
+            </h1>
           </div>
+
           <motion.div
-            initial={{ opacity: 0, x: -20 }}
-            animate={{ opacity: 1, x: 0 }}
-            transition={{ delay: 0.2 }}
+            initial={{
+              opacity: 0,
+              x: -30,
+            }}
+            animate={{
+              opacity: 1,
+              x: 0,
+            }}
           >
-            <h2 className="text-6xl font-display font-bold text-white/90 leading-tight mb-6">
-              Empower Your Cat's <br />
-              <span className="text-secondary-warm italic">Daily Wellness.</span>
+
+            <h2 className="text-6xl font-black text-white leading-tight mb-6">
+              Smart Feeding
+              <br />
+              For Your Cat 🐾
             </h2>
-            <p className="text-white/80 text-xl max-w-md font-light leading-relaxed">
-              Premium IoT Smart Feeding system designed to optimize nutrition and prevent FLUTD in felines.
+
+            <p className="text-white/80 text-xl leading-relaxed max-w-lg">
+              Sistem Smart Cat Feeder
+              modern berbasis IoT untuk
+              monitoring kesehatan dan
+              nutrisi kucing secara
+              real-time.
             </p>
+
           </motion.div>
         </div>
 
-        <div className="relative z-10 flex gap-4">
-          <div className="bg-white/10 backdrop-blur-md rounded-3xl p-6 border border-white/20">
-            <p className="text-white font-bold text-2xl mb-1">98%</p>
-            <p className="text-white/60 text-xs uppercase tracking-wider">Feeding Precision</p>
+        <div className="flex gap-5">
+
+          <div className="bg-white/10 backdrop-blur-xl rounded-3xl p-6 border border-white/20">
+
+            <h3 className="text-white text-3xl font-black">
+              98%
+            </h3>
+
+            <p className="text-white/70 text-sm mt-1">
+              Feeding Accuracy
+            </p>
+
           </div>
-          <div className="bg-white/10 backdrop-blur-md rounded-3xl p-6 border border-white/20">
-            <p className="text-white font-bold text-2xl mb-1">Real-time</p>
-            <p className="text-white/60 text-xs uppercase tracking-wider">Health Monitoring</p>
+
+          <div className="bg-white/10 backdrop-blur-xl rounded-3xl p-6 border border-white/20">
+
+            <h3 className="text-white text-3xl font-black">
+              Real-time
+            </h3>
+
+            <p className="text-white/70 text-sm mt-1">
+              Monitoring
+            </p>
+
           </div>
         </div>
 
-        {/* Abstract shapes */}
-        <div className="absolute -bottom-24 -right-24 w-96 h-96 bg-secondary-warm rounded-full opacity-20 blur-3xl animate-pulse" />
-        <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[800px] h-[800px] border border-white/10 rounded-full" />
+        <div className="absolute -bottom-32 -right-32 w-96 h-96 bg-white/20 rounded-full blur-3xl" />
+
       </div>
 
-      {/* Right side: Form */}
-      <div className="w-full lg:w-1/2 bg-bg-warm flex items-center justify-center p-8">
-        <motion.div 
-          initial={{ opacity: 0, scale: 0.95 }}
-          animate={{ opacity: 1, scale: 1 }}
-          className="w-full max-w-md bg-white rounded-[40px] p-12 shadow-2xl shadow-amber-200/20 border border-amber-100"
+      {/* RIGHT */}
+
+      <div className="w-full lg:w-1/2 bg-amber-50 flex items-center justify-center p-8">
+
+        <motion.div
+          initial={{
+            opacity: 0,
+            scale: 0.95,
+          }}
+          animate={{
+            opacity: 1,
+            scale: 1,
+          }}
+          className="w-full max-w-md bg-white rounded-[40px] p-10 shadow-2xl border border-amber-100"
         >
-          <div className="mb-10 text-center">
-            <h3 className="text-3xl font-display font-bold text-text-main mb-2">
-              {isLogin ? 'Welcome Back' : 'Get Started'}
-            </h3>
-            <p className="text-gray-400 font-sans">
-              {isLogin ? 'Manage your cat\'s nutrition dashboard.' : 'Protect your cat with smart feeding technology.'}
+
+          {/* HEADER */}
+
+          <div className="text-center mb-10">
+
+            <div className="w-20 h-20 bg-amber-100 rounded-full flex items-center justify-center mx-auto mb-5">
+
+              <Cat className="w-10 h-10 text-amber-700" />
+
+            </div>
+
+            <h2 className="text-4xl font-black text-amber-900">
+
+              {isLogin
+                ? 'Welcome Back'
+                : 'Create Account'}
+
+            </h2>
+
+            <p className="text-gray-400 mt-3">
+
+              {isLogin
+                ? 'Masuk ke dashboard Smart Cat Feeder'
+                : 'Daftar akun baru untuk monitoring kucing'}
+
             </p>
           </div>
 
-          <form onSubmit={handleSubmit} className="space-y-6">
-            <div className="space-y-4">
+          {/* FORM */}
+
+          <form
+            onSubmit={handleSubmit}
+            className="space-y-5"
+          >
+
+            {/* EMAIL */}
+
+            <div className="space-y-2">
+
+              <label
+                htmlFor="email"
+                className="text-sm font-bold text-gray-600"
+              >
+                Email
+              </label>
+
               <div className="relative">
+
                 <Mail className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-300 w-5 h-5" />
+
                 <input
+                  id="email"
                   type="email"
-                  placeholder="Email address"
-                  required
                   value={email}
-                  onChange={(e) => setEmail(e.target.value)}
-                  className="w-full pl-12 pr-4 py-4 bg-gray-50 border border-transparent focus:border-primary/30 rounded-2xl outline-none transition-all"
+                  onChange={(e) =>
+                    setEmail(
+                      e.target.value
+                    )
+                  }
+                  placeholder="Masukkan email"
+                  className="w-full pl-12 pr-4 py-4 rounded-2xl bg-gray-50 border border-transparent focus:border-amber-400 outline-none"
                 />
-              </div>
-              <div className="relative">
-                <Lock className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-300 w-5 h-5" />
-                <input
-                  type="password"
-                  placeholder="Password"
-                  required
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                  className="w-full pl-12 pr-4 py-4 bg-gray-50 border border-transparent focus:border-primary/30 rounded-2xl outline-none transition-all"
-                />
+
               </div>
             </div>
 
+            {/* PASSWORD */}
+
+            <div className="space-y-2">
+
+              <label
+                htmlFor="password"
+                className="text-sm font-bold text-gray-600"
+              >
+                Password
+              </label>
+
+              <div className="relative">
+
+                <Lock className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-300 w-5 h-5" />
+
+                <input
+                  id="password"
+                  type={
+                    showPassword
+                      ? 'text'
+                      : 'password'
+                  }
+                  value={password}
+                  onChange={(e) =>
+                    setPassword(
+                      e.target.value
+                    )
+                  }
+                  placeholder="Masukkan password"
+                  className="w-full pl-12 pr-14 py-4 rounded-2xl bg-gray-50 border border-transparent focus:border-amber-400 outline-none"
+                />
+
+                <button
+                  type="button"
+                  onClick={() =>
+                    setShowPassword(
+                      !showPassword
+                    )
+                  }
+                  className="absolute right-4 top-1/2 -translate-y-1/2 text-gray-400 hover:text-amber-700"
+                >
+
+                  {showPassword ? (
+
+                    <EyeOff className="w-5 h-5" />
+
+                  ) : (
+
+                    <Eye className="w-5 h-5" />
+
+                  )}
+
+                </button>
+              </div>
+            </div>
+
+            {/* ERROR */}
+
             {error && (
-              <p className="text-red-500 text-sm bg-red-50 p-3 rounded-xl border border-red-100">{error}</p>
+
+              <div className="bg-red-50 border border-red-100 text-red-600 text-sm rounded-2xl px-4 py-3">
+                {error}
+              </div>
+
             )}
+
+            {/* BUTTON */}
 
             <button
               type="submit"
               disabled={loading}
-              className="w-full btn-primary py-5 group"
+              className="w-full bg-amber-700 hover:bg-amber-800 text-white py-5 rounded-2xl font-bold flex items-center justify-center gap-2 transition-all disabled:opacity-50"
             >
-              {loading ? 'Processing...' : (isLogin ? 'Login Dashboard' : 'Create Account')}
-               <ArrowRight className="w-5 h-5 group-hover:translate-x-1 transition-transform" />
+
+              {loading
+                ? 'Processing...'
+                : isLogin
+                ? 'Masuk Dashboard'
+                : 'Buat Akun'}
+
+              <ArrowRight className="w-5 h-5" />
+
             </button>
           </form>
 
-          <div className="mt-8 pt-8 border-t border-amber-50 text-center">
+          {/* SWITCH */}
+
+          <div className="mt-8 text-center">
+
             <p className="text-gray-400">
-              {isLogin ? 'New to FelineGuard?' : 'Already have an account?'}
+
+              {isLogin
+                ? 'Belum punya akun?'
+                : 'Sudah punya akun?'}
+
               <button
-                onClick={() => setIsLogin(!isLogin)}
-                className="ml-2 text-primary font-bold hover:underline"
+                onClick={() =>
+                  setIsLogin(
+                    !isLogin
+                  )
+                }
+                className="ml-2 text-amber-700 font-bold hover:underline"
               >
-                {isLogin ? 'Create Profile' : 'Login Now'}
+
+                {isLogin
+                  ? 'Daftar'
+                  : 'Login'}
+
               </button>
             </p>
           </div>
         </motion.div>
       </div>
+
+      {/* POPUP */}
+
+      <AnimatePresence>
+
+        {showRolePopup && (
+
+          <motion.div
+            initial={{
+              opacity: 0,
+            }}
+            animate={{
+              opacity: 1,
+            }}
+            exit={{
+              opacity: 0,
+            }}
+            className="fixed inset-0 bg-black/50 backdrop-blur-md flex items-center justify-center z-50 p-5"
+          >
+
+            <motion.div
+              initial={{
+                opacity: 0,
+                scale: 0.85,
+                y: 40,
+              }}
+              animate={{
+                opacity: 1,
+                scale: 1,
+                y: 0,
+              }}
+              exit={{
+                opacity: 0,
+                scale: 0.9,
+                y: 20,
+              }}
+              transition={{
+                type: 'spring',
+                damping: 20,
+                stiffness: 200,
+              }}
+              className="bg-white w-full max-w-lg rounded-[40px] shadow-2xl overflow-hidden"
+            >
+
+              {/* HEADER */}
+
+              <div className="relative bg-gradient-to-br from-amber-600 via-orange-500 to-yellow-500 p-10 text-white text-center overflow-hidden">
+
+                <div className="absolute -top-16 -right-16 w-48 h-48 bg-white/10 rounded-full" />
+
+                <div className="relative z-10">
+
+                  <div className="w-24 h-24 bg-white/20 backdrop-blur-xl rounded-full flex items-center justify-center mx-auto mb-5 border border-white/20">
+
+                    {role === 'ADMIN' ? (
+
+                      <ShieldCheck className="w-12 h-12" />
+
+                    ) : (
+
+                      <User className="w-12 h-12" />
+
+                    )}
+
+                  </div>
+
+                  <h2 className="text-4xl font-black">
+
+                    {role === 'ADMIN'
+                      ? 'Admin Access'
+                      : 'Welcome 👋'}
+
+                  </h2>
+
+                  <p className="text-white/80 mt-3 leading-relaxed">
+
+                    {role === 'ADMIN'
+                      ? 'Kamu memiliki akses penuh ke seluruh fitur Smart Cat Feeder.'
+                      : 'Sistem siap digunakan untuk monitoring kesehatan dan feeding kucing.'}
+
+                  </p>
+                </div>
+              </div>
+
+              {/* CONTENT */}
+
+              <div className="p-8">
+
+                {/* USER BARU */}
+
+                {role !== 'ADMIN' &&
+                  isNewUser && (
+
+                    <div className="space-y-5">
+
+                      <div>
+
+                        <h3 className="text-2xl font-black text-amber-900">
+                          Kamu ingin monitoring siapa?
+                        </h3>
+
+                        <p className="text-gray-500 mt-2">
+                          Pilih jenis monitoring yang ingin digunakan pada dashboard.
+                        </p>
+                      </div>
+
+                      {/* OPTION */}
+
+                      <div className="grid grid-cols-2 gap-4">
+
+                        <button
+                          onClick={() =>
+                            setSelectedMonitor('self')
+                          }
+                          className={`p-5 rounded-3xl border-2 transition-all text-left ${
+                            selectedMonitor ===
+                            'self'
+                              ? 'border-amber-600 bg-amber-50'
+                              : 'border-gray-200'
+                          }`}
+                        >
+
+                          <div className="text-4xl mb-3">
+                            🐱
+                          </div>
+
+                          <h4 className="font-black text-lg text-amber-900">
+                            Kucing Sendiri
+                          </h4>
+
+                          <p className="text-sm text-gray-500 mt-2">
+                            Monitoring kucing milik pribadi.
+                          </p>
+
+                        </button>
+
+                        <button
+                          onClick={() =>
+                            setSelectedMonitor('family')
+                          }
+                          className={`p-5 rounded-3xl border-2 transition-all text-left ${
+                            selectedMonitor ===
+                            'family'
+                              ? 'border-amber-600 bg-amber-50'
+                              : 'border-gray-200'
+                          }`}
+                        >
+
+                          <div className="text-4xl mb-3">
+                            🏠
+                          </div>
+
+                          <h4 className="font-black text-lg text-amber-900">
+                            Banyak Kucing
+                          </h4>
+
+                          <p className="text-sm text-gray-500 mt-2">
+                            Monitoring beberapa kucing sekaligus.
+                          </p>
+
+                        </button>
+                      </div>
+                    </div>
+                  )}
+
+                {/* ADMIN */}
+
+                {role === 'ADMIN' && (
+
+                  <div className="bg-amber-50 border border-amber-100 rounded-3xl p-6">
+
+                    <h3 className="font-black text-2xl text-amber-900">
+                      Full Administrator
+                    </h3>
+
+                    <p className="text-amber-700 mt-3 leading-relaxed">
+                      Kamu dapat mengakses dashboard, analytics, user management, feeder control, dan seluruh sistem monitoring.
+                    </p>
+
+                  </div>
+                )}
+
+                {/* BUTTON */}
+
+                <button
+                  disabled={
+                    role !== 'ADMIN' &&
+                    isNewUser &&
+                    !selectedMonitor
+                  }
+                  onClick={() => {
+
+                    window.location.href =
+                      '/dashboard';
+                  }}
+                  className="mt-8 w-full py-5 rounded-2xl bg-amber-700 hover:bg-amber-800 text-white font-black transition-all disabled:opacity-50"
+                >
+
+                  Masuk Dashboard
+
+                </button>
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </div>
   );
 }
