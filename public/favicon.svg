@@ -1,0 +1,91 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
+  <!-- Background -->
+  <defs>
+    <radialGradient id="bg" cx="50%" cy="40%" r="60%">
+      <stop offset="0%" stop-color="#fbbf24"/>
+      <stop offset="100%" stop-color="#d97706"/>
+    </radialGradient>
+    <radialGradient id="face" cx="50%" cy="35%" r="60%">
+      <stop offset="0%" stop-color="#fffdf0"/>
+      <stop offset="100%" stop-color="#fef3c7"/>
+    </radialGradient>
+  </defs>
+
+  <rect width="64" height="64" rx="16" fill="url(#bg)"/>
+
+  <!-- Left ear outer -->
+  <polygon points="8,30 15,6 27,22" fill="#b45309"/>
+  <!-- Left ear inner (pink) -->
+  <polygon points="12,28 16,11 24,22" fill="#fda4af"/>
+
+  <!-- Right ear outer -->
+  <polygon points="56,30 49,6 37,22" fill="#b45309"/>
+  <!-- Right ear inner (pink) -->
+  <polygon points="52,28 48,11 40,22" fill="#fda4af"/>
+
+  <!-- Face -->
+  <ellipse cx="32" cy="39" rx="22" ry="20" fill="url(#face)"/>
+
+  <!-- Left eye sclera -->
+  <ellipse cx="22" cy="36" rx="7.5" ry="7.5" fill="white"/>
+  <!-- Left iris -->
+  <ellipse cx="22" cy="37" rx="4.5" ry="5.5" fill="#1e293b"/>
+  <!-- Left pupil shine large -->
+  <ellipse cx="24.5" cy="34" rx="2.2" ry="1.8" fill="white"/>
+  <!-- Left pupil shine small -->
+  <ellipse cx="20.5" cy="39.5" rx="1" ry="0.9" fill="white" opacity="0.75"/>
+
+  <!-- Sparkle left eye — big 4-point star, top-left -->
+  <g transform="translate(9,23)">
+    <line x1="0" y1="-5" x2="0" y2="5" stroke="white" stroke-width="1.8" stroke-linecap="round"/>
+    <line x1="-5" y1="0" x2="5" y2="0" stroke="white" stroke-width="1.8" stroke-linecap="round"/>
+    <line x1="-3" y1="-3" x2="3" y2="3" stroke="white" stroke-width="0.9" stroke-linecap="round"/>
+    <line x1="3" y1="-3" x2="-3" y2="3" stroke="white" stroke-width="0.9" stroke-linecap="round"/>
+  </g>
+  <!-- Sparkle left eye — small, top-right of eye -->
+  <g transform="translate(29,25)">
+    <line x1="0" y1="-3" x2="0" y2="3" stroke="#fde68a" stroke-width="1.3" stroke-linecap="round"/>
+    <line x1="-3" y1="0" x2="3" y2="0" stroke="#fde68a" stroke-width="1.3" stroke-linecap="round"/>
+  </g>
+
+  <!-- Right eye sclera -->
+  <ellipse cx="42" cy="36" rx="7.5" ry="7.5" fill="white"/>
+  <!-- Right iris -->
+  <ellipse cx="42" cy="37" rx="4.5" ry="5.5" fill="#1e293b"/>
+  <!-- Right pupil shine large -->
+  <ellipse cx="44.5" cy="34" rx="2.2" ry="1.8" fill="white"/>
+  <!-- Right pupil shine small -->
+  <ellipse cx="40.5" cy="39.5" rx="1" ry="0.9" fill="white" opacity="0.75"/>
+
+  <!-- Sparkle right eye — big 4-point star, top-right -->
+  <g transform="translate(55,23)">
+    <line x1="0" y1="-5" x2="0" y2="5" stroke="white" stroke-width="1.8" stroke-linecap="round"/>
+    <line x1="-5" y1="0" x2="5" y2="0" stroke="white" stroke-width="1.8" stroke-linecap="round"/>
+    <line x1="-3" y1="-3" x2="3" y2="3" stroke="white" stroke-width="0.9" stroke-linecap="round"/>
+    <line x1="3" y1="-3" x2="-3" y2="3" stroke="white" stroke-width="0.9" stroke-linecap="round"/>
+  </g>
+  <!-- Sparkle right eye — small, top-left of eye -->
+  <g transform="translate(35,25)">
+    <line x1="0" y1="-3" x2="0" y2="3" stroke="#fde68a" stroke-width="1.3" stroke-linecap="round"/>
+    <line x1="-3" y1="0" x2="3" y2="0" stroke="#fde68a" stroke-width="1.3" stroke-linecap="round"/>
+  </g>
+
+  <!-- Nose -->
+  <path d="M 30 44 L 32 47 L 34 44 Z" fill="#f472b6"/>
+
+  <!-- Mouth -->
+  <path d="M 29 48 Q 32 52 35 48" stroke="#92400e" stroke-width="1.5" fill="none" stroke-linecap="round"/>
+
+  <!-- Blush left -->
+  <ellipse cx="13" cy="44" rx="5.5" ry="3" fill="#fda4af" opacity="0.5"/>
+  <!-- Blush right -->
+  <ellipse cx="51" cy="44" rx="5.5" ry="3" fill="#fda4af" opacity="0.5"/>
+
+  <!-- Whiskers left -->
+  <line x1="5"  y1="41" x2="20" y2="43" stroke="#92400e" stroke-width="0.9" opacity="0.35" stroke-linecap="round"/>
+  <line x1="5"  y1="45" x2="20" y2="44.5" stroke="#92400e" stroke-width="0.9" opacity="0.35" stroke-linecap="round"/>
+
+  <!-- Whiskers right -->
+  <line x1="59" y1="41" x2="44" y2="43" stroke="#92400e" stroke-width="0.9" opacity="0.35" stroke-linecap="round"/>
+  <line x1="59" y1="45" x2="44" y2="44.5" stroke="#92400e" stroke-width="0.9" opacity="0.35" stroke-linecap="round"/>
+</svg>

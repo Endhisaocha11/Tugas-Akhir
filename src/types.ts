@@ -37,6 +37,7 @@ export interface FeedingScheduleSlot {
   time: string; // HH:mm
   amount: number; // grams
   label?: string;
+  active?: boolean; // default true
 }
 
 export interface FeedingLog {

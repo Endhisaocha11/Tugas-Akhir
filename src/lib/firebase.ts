@@ -2,6 +2,7 @@ import { getApps, initializeApp } from 'firebase/app';
 import { getAuth } from 'firebase/auth';
 import { getFirestore } from 'firebase/firestore';
 import { getDatabase } from 'firebase/database';
+import { getStorage } from 'firebase/storage';
 import firebaseConfig from '../../firebase-applet-config.json';
 
 const app = initializeApp(firebaseConfig);
@@ -15,6 +16,8 @@ const db = (firebaseConfig as any).firestoreDatabaseId
   : getFirestore(app);
 
 export { db };
+
+export const storage = getStorage(app);
 
 // Initialize Realtime Database if databaseURL is provided
 let rtdb: any = null;

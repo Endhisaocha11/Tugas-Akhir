@@ -285,38 +285,25 @@ export function UserSettings() {
     }
   };
 
-    // RESET PASSWORD
-    const handleResetPassword =
-  async (email: string) => {
-
+  // RESET PASSWORD
+  const handleResetPassword = async (email: string) => {
+    setLoading(true);
+    setError('');
+    setSuccess('');
     try {
-
-      setLoading(true);
-
-      await sendPasswordResetEmail(
-        auth,
-        email,
-        {
-          url:
-            'http://localhost:3000/login',
-          handleCodeInApp: false,
-        }
-      );
-
-      alert(
-        `Link reset password berhasil dikirim ke ${email}`
-      );
-
+      await sendPasswordResetEmail(auth, email);
+      setSuccess(`Link reset password berhasil dikirim ke ${email}. Minta user cek inbox atau folder spam.`);
+      setTimeout(() => setSuccess(''), 6000);
     } catch (err: any) {
-
-      console.error(err);
-
-      alert(
-        err.message
-      );
-
+      console.error('Reset password error:', err.code, err.message);
+      const msgs: Record<string, string> = {
+        'auth/user-not-found': `Tidak ada akun dengan email ${email}.`,
+        'auth/invalid-email': 'Format email tidak valid.',
+        'auth/too-many-requests': 'Terlalu banyak permintaan. Tunggu beberapa menit lalu coba lagi.',
+        'auth/network-request-failed': 'Gagal terhubung ke server. Periksa koneksi internet.',
+      };
+      setError(msgs[err.code] || `Gagal mengirim email reset (${err.code}): ${err.message}`);
     } finally {
-
       setLoading(false);
     }
   };
