@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Database, AlertCircle, Weight, Wifi, Settings2, Utensils, Loader2, CheckCircle2, XCircle, AlertTriangle, X, ChevronLeft, ChevronRight } from 'lucide-react';
+import { Database, AlertCircle, Weight, Wifi, WifiOff, Settings2, Utensils, Loader2, CheckCircle2, XCircle, AlertTriangle, X, ChevronLeft, ChevronRight, Copy, Check, Link2, Clock } from 'lucide-react';
 import {
   AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip,
   ResponsiveContainer, BarChart, Bar,
@@ -24,7 +24,9 @@ const DAYS_ID = ['Min', 'Sen', 'Sel', 'Rab', 'Kam', 'Jum', 'Sab'];
 const MONTHS_ID = ['Januari','Februari','Maret','April','Mei','Juni','Juli','Agustus','September','Oktober','November','Desember'];
 
 // ── FEEDING CALENDAR ──────────────────────────────────────
-type DayStatus = 'fed' | 'partial' | 'missed' | 'today-fed' | 'today-partial' | 'today-empty' | 'future';
+type DayStatus =
+  | 'overfed' | 'met' | 'under' | 'none' | 'future'
+  | 'today-overfed' | 'today-met' | 'today-under' | 'today-empty';
 
 function getDayStatus(date: Date, logsByDay: Record<string, FeedingLog[]>, dailyTarget: number): DayStatus {
   const now = new Date();
@@ -33,22 +35,26 @@ function getDayStatus(date: Date, logsByDay: Record<string, FeedingLog[]>, daily
   const key = `${date.getFullYear()}-${date.getMonth()}-${date.getDate()}`;
   const logs = logsByDay[key] ?? [];
   const total = logs.reduce((sum, l) => sum + (l.amountDispensed ?? 0), 0);
-  const pct = dailyTarget > 0 ? total / dailyTarget : 0;
 
   if (!isToday && !isPast) return 'future';
-  if (total === 0) return isToday ? 'today-empty' : 'missed';
-  if (pct >= 0.8) return isToday ? 'today-fed' : 'fed';
-  return isToday ? 'today-partial' : 'partial';
+  if (total === 0) return isToday ? 'today-empty' : 'none';
+
+  const target = dailyTarget > 0 ? dailyTarget : total;
+  if (total > target) return isToday ? 'today-overfed' : 'overfed';
+  if (total >= target * 0.85) return isToday ? 'today-met' : 'met';
+  return isToday ? 'today-under' : 'under';
 }
 
 const STATUS_STYLE: Record<DayStatus, string> = {
-  'fed':           'bg-green-100 text-green-800 border-green-200 hover:bg-green-200',
-  'partial':       'bg-amber-100 text-amber-800 border-amber-200 hover:bg-amber-200',
-  'missed':        'bg-red-100 text-red-700 border-red-200 hover:bg-red-200',
-  'today-fed':     'bg-green-500 text-white border-green-600 ring-2 ring-green-400 ring-offset-1',
-  'today-partial': 'bg-amber-500 text-white border-amber-600 ring-2 ring-amber-400 ring-offset-1',
-  'today-empty':   'bg-blue-500 text-white border-blue-600 ring-2 ring-blue-400 ring-offset-1',
+  'overfed':       'bg-red-400 text-white border-red-500 hover:bg-red-500',
+  'met':           'bg-green-400 text-white border-green-500 hover:bg-green-500',
+  'under':         'bg-yellow-300 text-yellow-900 border-yellow-400 hover:bg-yellow-400',
+  'none':          'bg-gray-100 text-gray-400 border-gray-200 hover:bg-gray-200',
   'future':        'bg-gray-50 text-gray-300 border-gray-100 cursor-default',
+  'today-overfed': 'bg-red-500 text-white border-red-600 ring-2 ring-red-400 ring-offset-1',
+  'today-met':     'bg-green-500 text-white border-green-600 ring-2 ring-green-400 ring-offset-1',
+  'today-under':   'bg-yellow-400 text-white border-yellow-500 ring-2 ring-yellow-300 ring-offset-1',
+  'today-empty':   'bg-blue-500 text-white border-blue-600 ring-2 ring-blue-400 ring-offset-1',
 };
 
 function FeedingCalendar({ feedingLogs, dailyTarget }: { feedingLogs: FeedingLog[]; dailyTarget: number }) {
@@ -121,30 +127,36 @@ function FeedingCalendar({ feedingLogs, dailyTarget }: { feedingLogs: FeedingLog
               if (!date) return <div key={i} />;
               const status = getDayStatus(date, logsByDay, dailyTarget);
               const isSelected = selectedDay?.toDateString() === date.toDateString();
+              const dayKey = `${date.getFullYear()}-${date.getMonth()}-${date.getDate()}`;
+              const dayTotal = (logsByDay[dayKey] ?? []).reduce((s, l) => s + (l.amountDispensed ?? 0), 0);
               return (
                 <button
                   key={i}
                   type="button"
-                  title={`${date.getDate()} ${MONTHS_ID[date.getMonth()]}`}
+                  title={`${date.getDate()} ${MONTHS_ID[date.getMonth()]} — ${dayTotal}g`}
                   onClick={() => status !== 'future' ? setSelectedDay(date) : undefined}
                   className={cn(
-                    'h-7 w-full rounded-lg border text-xs font-bold transition-all flex items-center justify-center',
+                    'h-9 w-full rounded-xl border text-xs font-bold transition-all flex flex-col items-center justify-center gap-0.5',
                     STATUS_STYLE[status],
                     isSelected && 'ring-2 ring-offset-1 ring-gray-400 scale-110',
                   )}
                 >
-                  {date.getDate()}
+                  <span>{date.getDate()}</span>
+                  {dayTotal > 0 && (
+                    <span className="text-[8px] opacity-75 leading-none">{dayTotal}g</span>
+                  )}
                 </button>
               );
             })}
           </div>
           {/* Legend */}
-          <div className="flex flex-wrap gap-2 mt-3 pt-2 border-t border-gray-100">
+          <div className="flex flex-wrap gap-x-3 gap-y-1 mt-3 pt-2 border-t border-gray-100">
             {[
-              { color: 'bg-green-400', label: 'Terpenuhi' },
-              { color: 'bg-amber-400', label: 'Sebagian' },
-              { color: 'bg-red-400',   label: 'Terlewat' },
-              { color: 'bg-blue-500',  label: 'Hari ini' },
+              { color: 'bg-green-400',  label: 'Terpenuhi' },
+              { color: 'bg-yellow-300', label: 'Kurang' },
+              { color: 'bg-red-400',    label: 'Berlebih' },
+              { color: 'bg-gray-300',   label: 'Tidak Ada' },
+              { color: 'bg-blue-500',   label: 'Hari ini' },
             ].map(({ color, label }) => (
               <div key={label} className="flex items-center gap-1">
                 <div className={`w-2 h-2 rounded-full shrink-0 ${color}`} />
@@ -189,9 +201,10 @@ function FeedingCalendar({ feedingLogs, dailyTarget }: { feedingLogs: FeedingLog
                   <>
                     <div className={cn(
                       'px-2 py-0.5 rounded-full text-[10px] font-black inline-block mb-2',
-                      selectedStatus === 'fed' || selectedStatus === 'today-fed' ? 'bg-green-100 text-green-700' :
-                      selectedStatus === 'partial' || selectedStatus === 'today-partial' ? 'bg-amber-100 text-amber-700' :
-                      'bg-red-100 text-red-700'
+                      selectedStatus === 'overfed' || selectedStatus === 'today-overfed' ? 'bg-red-100 text-red-700' :
+                      selectedStatus === 'met'     || selectedStatus === 'today-met'     ? 'bg-green-100 text-green-700' :
+                      selectedStatus === 'under'   || selectedStatus === 'today-under'   ? 'bg-yellow-100 text-yellow-700' :
+                      'bg-gray-100 text-gray-500'
                     )}>
                       {selectedTotal}g / {dailyTarget > 0 ? `${dailyTarget}g` : '—'}
                     </div>
@@ -236,6 +249,129 @@ function FeedingCalendar({ feedingLogs, dailyTarget }: { feedingLogs: FeedingLog
   );
 }
 
+// ── Circular Gauge (speedometer style) ───────────────────────────────────────
+
+function CircularGauge({
+  value, max, unit = 'GR', overrideColor,
+}: {
+  value: number;
+  max: number;
+  unit?: string;
+  overrideColor?: string;
+}) {
+  const pct = max > 0 ? Math.min(value / max, 1) : 0;
+  const r = 45;
+  const circumference = 2 * Math.PI * r;
+  const arcLength = circumference * 0.75;
+  const fillLength = arcLength * pct;
+  const isOverfed = max > 0 && value > max;
+  const color = overrideColor ?? (isOverfed ? '#ef4444' : pct > 0.75 ? '#f59e0b' : '#22c55e');
+
+  return (
+    <div className="relative w-28 h-28 shrink-0">
+      <svg width="112" height="112" viewBox="0 0 120 120" className="rotate-[-225deg]">
+        <circle cx="60" cy="60" r={r} fill="none" stroke="#e5e7eb"
+          strokeWidth="10" strokeDasharray={`${arcLength} ${circumference}`} strokeLinecap="round" />
+        {fillLength > 1 && (
+          <circle cx="60" cy="60" r={r} fill="none" stroke={color}
+            strokeWidth="10" strokeDasharray={`${fillLength} ${circumference}`} strokeLinecap="round" />
+        )}
+      </svg>
+      <div className="absolute inset-0 flex flex-col items-center justify-center">
+        <span className="text-2xl font-black text-gray-900 leading-none">{value}</span>
+        <span className="text-xs text-gray-400 font-bold">{unit}</span>
+      </div>
+    </div>
+  );
+}
+
+// ── Cat Monitoring Card ───────────────────────────────────────────────────────
+
+function CatMonitoringCard({ feedingLogs, bowlWeight, catName }: {
+  feedingLogs: { timestamp: number; amountDispensed: number; notes?: string }[];
+  bowlWeight: number;
+  catName: string;
+}) {
+  const lastLog = feedingLogs[0];
+  const lastTime = lastLog
+    ? new Date(lastLog.timestamp).toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' })
+    : null;
+  const minsAgo = lastLog ? Math.floor((Date.now() - lastLog.timestamp) / 60000) : null;
+
+  // Eating detection: bowl weight < 75% of last dispensed = cat ate some food
+  const isEating = lastLog && bowlWeight < lastLog.amountDispensed * 0.75;
+  const isRecent = minsAgo !== null && minsAgo < 60;
+
+  const statusLabel = !lastLog ? 'Tidak Ada Data'
+    : isEating && isRecent ? 'Terlihat' : 'Menunggu';
+  const statusColor = statusLabel === 'Terlihat'
+    ? 'bg-green-500 text-white' : statusLabel === 'Menunggu'
+    ? 'bg-yellow-400 text-yellow-900' : 'bg-gray-600 text-gray-300';
+
+  return (
+    <div className="bg-white rounded-3xl border border-gray-100 p-5 shadow-sm flex flex-col gap-4">
+      <div className="flex items-center justify-between">
+        <div className="flex items-center gap-2">
+          <span className="text-xl">🐱</span>
+          <p className="text-sm font-black text-gray-700">Monitoring Kucing</p>
+        </div>
+        <span className={cn('text-xs font-black px-2.5 py-1 rounded-full', statusColor)}>
+          {statusLabel === 'Terlihat' ? '⚡ Terlihat' : statusLabel === 'Menunggu' ? '⏳ Menunggu' : '— Tidak Ada Data'}
+        </span>
+      </div>
+
+      {/* Cat info area */}
+      <div className="flex items-center gap-4 bg-gray-50 rounded-2xl px-4 py-3 border border-gray-100">
+        <div className="relative">
+          <div className="w-14 h-14 rounded-full bg-amber-100 flex items-center justify-center text-3xl">
+            🐈
+          </div>
+          {isEating && isRecent && (
+            <span className="absolute -top-1 -right-1 w-4 h-4 bg-green-400 rounded-full animate-ping" />
+          )}
+        </div>
+        <div className="flex-1">
+          <p className="font-black text-base text-gray-900">{catName}</p>
+          {lastTime ? (
+            <div className="flex items-center gap-1.5 mt-1">
+              <Clock className="w-3 h-3 text-gray-400" />
+              <p className="text-xs text-gray-500">
+                Terakhir: <span className="text-amber-500 font-bold">{lastTime}</span>
+                {minsAgo !== null && <span className="text-gray-400"> ({minsAgo < 60 ? `${minsAgo} mnt lalu` : `${Math.floor(minsAgo / 60)} jam lalu`})</span>}
+              </p>
+            </div>
+          ) : (
+            <p className="text-xs text-gray-400 mt-1">Belum ada riwayat pemberian</p>
+          )}
+        </div>
+      </div>
+
+      {/* History */}
+      {feedingLogs.length > 0 && (
+        <div className="space-y-1.5">
+          <p className="text-[10px] font-black uppercase tracking-widest text-gray-400">Riwayat Terakhir</p>
+          {feedingLogs.slice(0, 4).map((log) => (
+            <div key={log.timestamp} className="flex items-center justify-between bg-gray-50 rounded-xl px-3 py-2 border border-gray-100">
+              <div className="flex items-center gap-2">
+                <div className={cn('w-1.5 h-1.5 rounded-full', log.notes === 'manual' ? 'bg-blue-400' : 'bg-amber-400')} />
+                <span className="text-xs text-gray-600">
+                  {new Date(log.timestamp).toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' })}
+                </span>
+              </div>
+              <div className="flex items-center gap-2">
+                <span className="text-xs font-black text-amber-500">{log.amountDispensed}g</span>
+                <span className="text-[10px] text-gray-400">{log.notes === 'manual' ? 'Manual' : 'Otomatis'}</span>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ── Dashboard ─────────────────────────────────────────────────────────────────
+
 export function Dashboard() {
   const { user, profile } = useAuth();
   const isAdmin = profile?.role === UserRole.SUPER_ADMIN;
@@ -247,11 +383,28 @@ export function Dashboard() {
   const [isFeeding, setIsFeeding] = useState(false);
   const [feedResult, setFeedResult] = useState<'success' | 'error' | null>(null);
 
+  // Connect device modal
+  const [showConnectModal, setShowConnectModal] = useState(false);
+  const [copied, setCopied] = useState(false);
+
+  const handleCopyUID = () => {
+    navigator.clipboard.writeText(targetOwnerId).then(() => {
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    });
+  };
+
   // ── Today's feeding total from real logs ──────────────
+  const todayStr = new Date().toISOString().split('T')[0];
   const todayStart = new Date();
   todayStart.setHours(0, 0, 0, 0);
+  const todayStartMs = todayStart.getTime();
+  const profileUpdatedTodayMs =
+    cat?.profileUpdatedAt && cat.profileUpdatedAt >= todayStartMs
+      ? cat.profileUpdatedAt
+      : todayStartMs;
   const todayLogs = feedingLogs.filter(
-    (l) => l.timestamp >= todayStart.getTime()
+    (l) => l.timestamp >= profileUpdatedTodayMs
   );
   const todayTotal = Math.round(
     todayLogs.reduce((sum, l) => sum + (l.amountDispensed ?? 0), 0)
@@ -265,7 +418,7 @@ export function Dashboard() {
   // ── Would this feed exceed the daily limit? ───────────
   const remainingToday = dailyTarget > 0 ? Math.max(0, dailyTarget - todayTotal) : Infinity;
   const wouldExceed = dailyTarget > 0 && (todayTotal + feedingAmount) > dailyTarget;
-  const isAtLimit = dailyTarget > 0 && todayTotal >= dailyTarget;
+  const isAtLimit = cat?.dailyLimitReachedDate === todayStr;
 
   // ── Area chart: feeding by 4-hour buckets today ───────
   const bucketLabels = ['00:00', '04:00', '08:00', '12:00', '16:00', '20:00'];
@@ -347,6 +500,57 @@ export function Dashboard() {
   return (
     <div className="space-y-5">
 
+      {/* ── DEVICE STATUS BANNER ── */}
+      {!device && (
+        <div className="flex items-center justify-between gap-4 bg-orange-50 border border-orange-200 rounded-2xl px-5 py-4">
+          <div className="flex items-center gap-3">
+            <div className="w-9 h-9 rounded-xl bg-orange-100 flex items-center justify-center shrink-0">
+              <WifiOff className="w-4 h-4 text-orange-500" />
+            </div>
+            <div>
+              <p className="text-sm font-bold text-orange-700">Perangkat ESP32 belum terhubung</p>
+              <p className="text-xs text-orange-500 mt-0.5">Fitur otomatis tidak aktif. Hubungkan perangkat untuk mulai monitoring.</p>
+            </div>
+          </div>
+          {isAdmin && (
+            <button
+              type="button"
+              onClick={() => setShowConnectModal(true)}
+              className="shrink-0 flex items-center gap-2 px-4 py-2 rounded-xl bg-orange-500 hover:bg-orange-600 text-white text-xs font-bold transition-colors"
+            >
+              <Link2 className="w-3.5 h-3.5" />
+              Hubungkan
+            </button>
+          )}
+        </div>
+      )}
+      {isOffline && (
+        <div className="flex items-center justify-between gap-4 bg-gray-50 border border-gray-200 rounded-2xl px-5 py-4">
+          <div className="flex items-center gap-3">
+            <div className="w-9 h-9 rounded-xl bg-gray-100 flex items-center justify-center shrink-0">
+              <WifiOff className="w-4 h-4 text-gray-400" />
+            </div>
+            <div>
+              <p className="text-sm font-bold text-gray-600">Perangkat offline</p>
+              <p className="text-xs text-gray-400 mt-0.5">
+                Terakhir aktif: {device?.lastPulse
+                  ? new Date(device.lastPulse).toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' })
+                  : '—'}. Periksa koneksi Wi-Fi ESP32.
+              </p>
+            </div>
+          </div>
+          {isAdmin && (
+            <button
+              type="button"
+              onClick={() => setShowConnectModal(true)}
+              className="shrink-0 px-4 py-2 rounded-xl bg-gray-200 hover:bg-gray-300 text-gray-600 text-xs font-bold transition-colors"
+            >
+              Info Koneksi
+            </button>
+          )}
+        </div>
+      )}
+
       {/* ── ALERTS ── */}
       {isOverfed && (
         <div className="flex items-center gap-3 bg-red-50 border border-red-100 rounded-2xl px-5 py-3">
@@ -361,14 +565,6 @@ export function Dashboard() {
           <AlertCircle className="w-4 h-4 text-orange-400 shrink-0" />
           <p className="text-sm text-orange-600">
             Stok makanan hampir habis ({foodStock}%). Segera isi ulang wadah pakan.
-          </p>
-        </div>
-      )}
-      {isOffline && (
-        <div className="flex items-center gap-3 bg-gray-50 border border-gray-200 rounded-2xl px-5 py-3">
-          <Wifi className="w-4 h-4 text-gray-400 shrink-0" />
-          <p className="text-sm text-gray-500">
-            Perangkat saat ini offline. Pastikan koneksi Wi-Fi aktif.
           </p>
         </div>
       )}
@@ -507,64 +703,124 @@ export function Dashboard() {
       {/* ── SMALL CARDS ── */}
       <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4">
 
-        <div className="bg-white rounded-3xl border border-gray-100 p-5 shadow-sm">
+        {/* Status Tabung — circular gauge */}
+        <div className="bg-white rounded-3xl border border-gray-100 p-5 shadow-sm flex flex-col gap-3">
           <div className="flex items-center gap-2">
-            <Database className="w-6 h-10 text-gray-400" />
-            <span className="text-[20px] text-black font-medium">Stok Makanan</span>
+            <Database className="w-5 h-5 text-gray-400" />
+            <span className="text-sm text-gray-500 font-semibold">Status Tabung</span>
           </div>
-          <h1 className="text-4xl font-black text-gray-800 mt-5">
-            {device ? `${foodStock}%` : '—'}
-          </h1>
-          {device && (
-            <div className="w-full h-2 bg-gray-100 rounded-full overflow-hidden mt-4">
-              <motion.div
-                initial={{ width: 0 }}
-                animate={{ width: `${foodStock}%` }}
-                transition={{ duration: 0.8 }}
-                className={`h-full rounded-full ${foodStock < 20 ? 'bg-red-400' : 'bg-amber-400'}`}
-              />
+          <div className="flex items-center gap-4">
+            <CircularGauge
+              value={device ? foodStock : 0}
+              max={100}
+              unit="%"
+              overrideColor={
+                !device ? '#d1d5db'
+                : foodStock < 20 ? '#ef4444'
+                : foodStock < 50 ? '#f59e0b'
+                : '#22c55e'
+              }
+            />
+            <div className="flex-1 min-w-0">
+              <p className={cn(
+                'text-lg font-black leading-tight',
+                !device ? 'text-gray-300'
+                : foodStock < 20 ? 'text-red-500'
+                : foodStock < 50 ? 'text-yellow-500'
+                : 'text-green-500'
+              )}>
+                {!device ? '—'
+                  : foodStock < 20 ? 'Hampir Habis'
+                  : foodStock < 50 ? 'Berkurang'
+                  : 'Cukup'}
+              </p>
+              <p className="text-xs text-gray-400 mt-1">Sisa: {device ? `${foodStock}%` : '—'}</p>
+              <div className="mt-2 bg-gray-100 rounded-full h-1.5 overflow-hidden">
+                <motion.div
+                  initial={{ width: 0 }}
+                  animate={{ width: `${foodStock}%` }}
+                  transition={{ duration: 0.8 }}
+                  className={cn('h-full rounded-full',
+                    foodStock < 20 ? 'bg-red-400' : foodStock < 50 ? 'bg-yellow-400' : 'bg-green-400'
+                  )}
+                />
+              </div>
             </div>
-          )}
+          </div>
         </div>
 
-        <div className="bg-white rounded-3xl border border-gray-100 p-5 shadow-sm">
+        {/* Berat Makanan — circular gauge */}
+        <div className="bg-white rounded-3xl border border-gray-100 p-5 shadow-sm flex flex-col gap-3">
           <div className="flex items-center gap-2">
-            <Weight className="w-6 h-10 text-gray-400" />
-            <span className="text-[20px] text-black font-medium">Berat Mangkok</span>
+            <Weight className="w-5 h-5 text-gray-400" />
+            <span className="text-sm text-gray-500 font-semibold">Berat Makanan</span>
           </div>
-          <h1 className="text-4xl font-black text-gray-800 mt-5">
-            {device ? `${device.currentWeightOnScale}g` : '—'}
-          </h1>
+          <div className="flex items-center gap-4">
+            <CircularGauge
+              value={device?.currentWeightOnScale ?? 0}
+              max={dailyTarget || 100}
+            />
+            <div className="flex-1 min-w-0">
+              <p className="text-xs text-gray-400">Target: {dailyTarget > 0 ? `${dailyTarget}g` : '—'}</p>
+              <div className="mt-2 bg-gray-100 rounded-full h-1.5 overflow-hidden">
+                <motion.div
+                  initial={{ width: 0 }}
+                  animate={{ width: `${dailyTarget > 0 ? Math.min(((device?.currentWeightOnScale ?? 0) / dailyTarget) * 100, 100) : 0}%` }}
+                  transition={{ duration: 0.8 }}
+                  className={cn('h-full rounded-full', dailyTarget > 0 && (device?.currentWeightOnScale ?? 0) > dailyTarget ? 'bg-red-400' : 'bg-green-400')}
+                />
+              </div>
+              <p className="text-xs text-gray-400 mt-1">
+                {device?.currentWeightOnScale ?? 0} / {dailyTarget > 0 ? dailyTarget : '—'} gram
+              </p>
+            </div>
+          </div>
         </div>
 
-        <div className="bg-white rounded-3xl border border-gray-100 p-5 shadow-sm">
+        {/* Status Servo */}
+        <div className="bg-white rounded-3xl border border-gray-100 p-5 shadow-sm flex flex-col gap-3">
           <div className="flex items-center gap-2">
-            <Settings2 className="w-6 h-10 text-gray-400" />
-            <span className="text-[20px] text-black font-medium">Status Servo</span>
+            <Settings2 className="w-5 h-5 text-gray-400" />
+            <span className="text-sm text-gray-500 font-semibold">Status Servo</span>
           </div>
-          <h1 className={`text-3xl font-black mt-5 ${
+          <p className={`text-3xl font-black mt-1 ${
             device?.servoStatus === 'active' ? 'text-amber-500' :
             device?.servoStatus === 'jammed' ? 'text-red-500' : 'text-green-500'
           }`}>
             {device?.servoStatus === 'active' ? 'Aktif' :
              device?.servoStatus === 'jammed' ? 'Macet' :
              device ? 'Siaga' : '—'}
-          </h1>
+          </p>
+          <div className="mt-auto h-1.5 bg-gray-100 rounded-full overflow-hidden">
+            <div className={cn('h-full rounded-full w-full',
+              device?.servoStatus === 'jammed' ? 'bg-red-400' :
+              device?.servoStatus === 'active' ? 'bg-amber-400 animate-pulse' : 'bg-green-400'
+            )} />
+          </div>
         </div>
 
-        <div className="bg-white rounded-3xl border border-gray-100 p-5 shadow-sm">
+        {/* Perangkat */}
+        <div className="bg-white rounded-3xl border border-gray-100 p-5 shadow-sm flex flex-col gap-3">
           <div className="flex items-center gap-2">
-            <Wifi className="w-6 h-10 text-gray-400" />
-            <span className="text-[20px] text-black font-medium">Perangkat</span>
+            <Wifi className="w-5 h-5 text-gray-400" />
+            <span className="text-sm text-gray-500 font-semibold">Perangkat</span>
           </div>
-          <h1 className={`text-3xl font-black mt-5 ${device?.isOnline ? 'text-blue-500' : 'text-gray-400'}`}>
+          <p className={`text-3xl font-black mt-1 ${device?.isOnline ? 'text-blue-500' : 'text-gray-400'}`}>
             {device ? (device.isOnline ? 'Online' : 'Offline') : '—'}
-          </h1>
+          </p>
           {device?.lastPulse && (
-            <p className="text-xs text-gray-400 mt-2">
-              Terakhir aktif: {new Date(device.lastPulse).toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' })}
+            <p className="text-xs text-gray-400 mt-auto">
+              Terakhir: {new Date(device.lastPulse).toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' })}
             </p>
           )}
+          <div className="h-1.5 bg-gray-100 rounded-full overflow-hidden">
+            <motion.div
+              initial={{ width: 0 }}
+              animate={{ width: device?.isOnline ? '100%' : '0%' }}
+              transition={{ duration: 0.8 }}
+              className="h-full rounded-full bg-blue-400"
+            />
+          </div>
         </div>
       </div>
 
@@ -626,8 +882,99 @@ export function Dashboard() {
         </div>
       </div>
 
+      {/* ── MONITORING KUCING ── */}
+      <CatMonitoringCard
+        feedingLogs={feedingLogs}
+        bowlWeight={device?.currentWeightOnScale ?? 0}
+        catName={cat?.name ?? 'Kucing'}
+      />
+
       {/* ── FEEDING CALENDAR ── */}
       <FeedingCalendar feedingLogs={feedingLogs} dailyTarget={dailyTarget} />
+
+      {/* ── CONNECT DEVICE MODAL ── */}
+      <AnimatePresence>
+        {showConnectModal && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40 backdrop-blur-sm"
+            onClick={(e) => { if (e.target === e.currentTarget) setShowConnectModal(false); }}
+          >
+            <motion.div
+              initial={{ scale: 0.92, opacity: 0, y: 20 }}
+              animate={{ scale: 1, opacity: 1, y: 0 }}
+              exit={{ scale: 0.92, opacity: 0, y: 20 }}
+              transition={{ type: 'spring', damping: 20, stiffness: 300 }}
+              className="bg-white rounded-4xl p-8 w-full max-w-md shadow-2xl relative"
+            >
+              <button
+                type="button"
+                aria-label="Tutup"
+                title="Tutup"
+                onClick={() => setShowConnectModal(false)}
+                className="absolute top-5 right-5 w-10 h-10 rounded-2xl bg-gray-100 flex items-center justify-center text-gray-400 hover:bg-gray-200 transition-colors"
+              >
+                <X className="w-5 h-5" />
+              </button>
+
+              <div className="flex items-center gap-4 mb-6">
+                <div className="w-14 h-14 bg-orange-50 rounded-3xl flex items-center justify-center shrink-0">
+                  <Link2 className="w-6 h-6 text-orange-500" />
+                </div>
+                <div>
+                  <h3 className="text-2xl font-black text-gray-900">Hubungkan ESP32</h3>
+                  <p className="text-sm text-gray-400">Konfigurasi perangkat agar terhubung ke akun ini</p>
+                </div>
+              </div>
+
+              {/* UID */}
+              <div className="mb-5">
+                <p className="text-xs font-black uppercase tracking-widest text-gray-400 mb-2">Owner UID (salin ke firmware ESP32)</p>
+                <div className="flex items-center gap-2 bg-gray-50 border border-gray-200 rounded-2xl px-4 py-3">
+                  <code className="flex-1 text-sm font-bold text-gray-800 break-all">{targetOwnerId}</code>
+                  <button
+                    type="button"
+                    title="Salin UID"
+                    onClick={handleCopyUID}
+                    className="shrink-0 w-8 h-8 rounded-xl bg-white border border-gray-200 flex items-center justify-center hover:bg-amber-50 hover:border-amber-300 transition-colors"
+                  >
+                    {copied ? <Check className="w-4 h-4 text-green-500" /> : <Copy className="w-4 h-4 text-gray-400" />}
+                  </button>
+                </div>
+                {copied && <p className="text-xs text-green-500 font-semibold mt-1 ml-1">UID berhasil disalin!</p>}
+              </div>
+
+              {/* Steps */}
+              <div className="space-y-3">
+                <p className="text-xs font-black uppercase tracking-widest text-gray-400">Langkah Konfigurasi ESP32</p>
+                {[
+                  { num: '1', text: 'Upload firmware ke ESP32 dengan library Firebase ESP Client.' },
+                  { num: '2', text: `Set OWNER_UID = "${targetOwnerId.slice(0, 8)}..." di config firmware.` },
+                  { num: '3', text: 'Set WIFI_SSID dan WIFI_PASSWORD sesuai jaringan lokal.' },
+                  { num: '4', text: 'ESP32 akan menulis ke path: devices/{ownerId}_device di Firestore.' },
+                  { num: '5', text: 'Setelah terhubung, status perangkat muncul otomatis di dashboard.' },
+                ].map((s) => (
+                  <div key={s.num} className="flex items-start gap-3">
+                    <div className="w-6 h-6 rounded-full bg-orange-100 text-orange-600 text-xs font-black flex items-center justify-center shrink-0 mt-0.5">
+                      {s.num}
+                    </div>
+                    <p className="text-sm text-gray-600 leading-relaxed">{s.text}</p>
+                  </div>
+                ))}
+              </div>
+
+              <div className="mt-6 p-4 bg-blue-50 border border-blue-100 rounded-2xl">
+                <p className="text-xs text-blue-700 font-semibold">
+                  Firestore path yang harus ditulis ESP32:<br />
+                  <code className="font-black">devices/{targetOwnerId}_device</code>
+                </p>
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
 
       {/* ── MANUAL FEED MODAL ── */}
       <AnimatePresence>

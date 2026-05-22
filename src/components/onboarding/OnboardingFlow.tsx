@@ -1,5 +1,5 @@
 import React, { useState, useRef, ChangeEvent } from "react";
-import { doc, setDoc } from "firebase/firestore";
+import { doc, getDoc, setDoc } from "firebase/firestore";
 import { db } from "../../lib/firebase";
 import { useAuth } from "../../lib/AuthContext";
 
@@ -391,7 +391,36 @@ export default function OnboardingFlow({
       }
     }
 
-    // ── 2. Simpan data ke Firestore (selalu jalan meski foto gagal) ──────────
+    // ── 2. Simpan profil lama ke history sebelum overwrite ──────────────────
+    try {
+      const existingSnap = await getDoc(doc(db, 'cats', catId));
+      if (existingSnap.exists()) {
+        const prev = existingSnap.data();
+        const histId = `${catId}_${prev.profileUpdatedAt ?? Date.now() - 1}`;
+        await setDoc(doc(db, 'catProfileHistory', histId), {
+          id: histId,
+          catId,
+          ownerId: user.uid,
+          savedAt: prev.profileUpdatedAt ?? 0,
+          endedAt: Date.now(),
+          name: prev.name ?? '',
+          gender: prev.gender ?? 'male',
+          age: prev.age ?? 0,
+          weight: prev.weight ?? 0,
+          isSterilized: prev.isSterilized ?? false,
+          bodyCondition: prev.bodyCondition ?? 3,
+          dailyGramTarget: prev.dailyGramTarget ?? 0,
+          dailyCalorieTarget: prev.dailyCalorieTarget ?? 0,
+          kiloCaloriesPerKg: prev.kiloCaloriesPerKg ?? 4000,
+          activity: prev.activity ?? 'normal',
+          feedingSchedule: prev.feedingSchedule ?? [],
+        });
+      }
+    } catch (histErr) {
+      console.warn('Gagal menyimpan history profil:', histErr);
+    }
+
+    // ── 3. Simpan data ke Firestore (selalu jalan meski foto gagal) ──────────
     try {
       await setDoc(doc(db, 'cats', catId), {
         id: catId,
@@ -412,6 +441,7 @@ export default function OnboardingFlow({
           amount: s.amount,
           label: s.label,
         })),
+        profileUpdatedAt: Date.now(),
         updatedAt: new Date().toISOString(),
       });
 
