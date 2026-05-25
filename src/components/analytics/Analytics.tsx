@@ -276,6 +276,12 @@ function FeedingCalendarAnalytics({ feedingLogs, dailyTarget }: { feedingLogs: F
 export function Analytics() {
   const { cat, feedingLogs, loading } = useCatData();
 
+  // Filter logs by profileUpdatedAt — sama seperti Dashboard agar chart reset saat profil berubah
+  const profileUpdatedAt = cat?.profileUpdatedAt ?? 0;
+  const filteredLogs = profileUpdatedAt > 0
+    ? feedingLogs.filter((l) => l.timestamp >= profileUpdatedAt)
+    : feedingLogs;
+
   // ── Last 7 days line data (gram/hari) ─────────────────
   const now = Date.now();
   const last7 = Array.from({ length: 7 }, (_, i) => {
@@ -284,7 +290,7 @@ export function Analytics() {
   });
 
   const dayTotals: Record<string, number> = {};
-  feedingLogs.forEach((log) => {
+  filteredLogs.forEach((log) => {
     const key = new Date(log.timestamp).toDateString();
     dayTotals[key] = (dayTotals[key] ?? 0) + (log.amountDispensed ?? 0);
   });
@@ -301,7 +307,7 @@ export function Analytics() {
 
   // ── Portion by time-of-day bar data ───────────────────
   const periodMap: Record<string, number> = { Pagi: 0, Siang: 0, Sore: 0, Malam: 0 };
-  feedingLogs.forEach((log) => {
+  filteredLogs.forEach((log) => {
     const hour = new Date(log.timestamp).getHours();
     if (hour < 11) periodMap['Pagi'] += log.amountDispensed ?? 0;
     else if (hour < 15) periodMap['Siang'] += log.amountDispensed ?? 0;
@@ -314,9 +320,9 @@ export function Analytics() {
   }));
 
   // ── Manual vs Scheduled pie data ─────────────────────
-  const manualCount = feedingLogs.filter((l) => l.notes === 'manual').length;
-  const scheduledCount = feedingLogs.length - manualCount;
-  const totalLogs = feedingLogs.length || 1;
+  const manualCount = filteredLogs.filter((l) => l.notes === 'manual').length;
+  const scheduledCount = filteredLogs.length - manualCount;
+  const totalLogs = filteredLogs.length || 1;
   const pieData = [
     { name: 'Terjadwal', value: Math.round((scheduledCount / totalLogs) * 100) },
     { name: 'Manual', value: Math.round((manualCount / totalLogs) * 100) },
@@ -375,7 +381,7 @@ export function Analytics() {
               ? `Target harian: ${dailyTarget}g. Variasi: ±${variation}%.`
               : 'Belum ada target harian yang dikonfigurasi.'}
           </p>
-          {feedingLogs.length === 0 && (
+          {filteredLogs.length === 0 && (
             <p className="text-xs text-white/40">Belum ada data log pemberian makan.</p>
           )}
         </div>
@@ -444,7 +450,7 @@ export function Analytics() {
               <PieIcon className="text-red-400 w-5 h-5" /> Terjadwal vs Manual
             </h4>
             <span className="text-xs font-bold text-gray-400 uppercase tracking-widest">
-              {feedingLogs.length} total event
+              {filteredLogs.length} total event
             </span>
           </div>
           <div className="flex-1 flex gap-8 items-center">
@@ -474,7 +480,7 @@ export function Analytics() {
               ))}
             </div>
           </div>
-          {scheduledCount > manualCount && (
+          {filteredLogs.length > 0 && scheduledCount > manualCount && (
             <div className="mt-6 p-5 bg-amber-50 rounded-3xl border border-amber-100">
               <p className="text-sm font-bold text-amber-600 flex items-center gap-2">
                 <TrendingUp className="w-4 h-4" /> Jadwal berjalan dengan baik
@@ -488,7 +494,7 @@ export function Analytics() {
       </div>
 
       {/* ── FEEDING CALENDAR PER TANGGAL ── */}
-      <FeedingCalendarAnalytics feedingLogs={feedingLogs} dailyTarget={dailyTarget} />
+      <FeedingCalendarAnalytics feedingLogs={filteredLogs} dailyTarget={dailyTarget} />
     </div>
   );
 }

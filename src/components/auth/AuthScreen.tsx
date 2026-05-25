@@ -97,14 +97,14 @@ export function AuthScreen() {
             <div className="w-14 h-14 bg-white rounded-3xl flex items-center justify-center shadow-2xl">
               <Cat className="w-8 h-8 text-amber-700" />
             </div>
-            <h1 className="text-4xl font-black text-white">FelineGuard</h1>
+            <h1 className="text-4xl font-black text-white">PawfectCare</h1>
           </div>
           <motion.div initial={{ opacity: 0, x: -30 }} animate={{ opacity: 1, x: 0 }}>
             <h2 className="text-6xl font-black text-white leading-tight mb-6">
               Smart Feeding<br />For Your Cat 🐾
             </h2>
             <p className="text-white/80 text-xl leading-relaxed max-w-lg">
-              Sistem Smart Cat Feeder berbasis IoT untuk monitoring kesehatan
+              Sistem PawfectCare berbasis IoT untuk monitoring kesehatan
               dan nutrisi kucing secara real-time.
             </p>
           </motion.div>
@@ -225,7 +225,7 @@ export function AuthScreen() {
                 </h2>
                 <p className="text-gray-400 mt-3">
                   {isLogin
-                    ? 'Masuk ke dashboard Smart Cat Feeder'
+                    ? 'Masuk ke dashboard PawfectCare'
                     : 'Daftar akun baru untuk monitoring kucing'}
                 </p>
               </div>
@@ -353,7 +353,7 @@ export function AuthScreen() {
                   </h2>
                   <p className="text-white/80 mt-3 leading-relaxed">
                     {isAdmin
-                      ? 'Kamu memiliki akses penuh ke seluruh fitur Smart Cat Feeder.'
+                      ? 'Kamu memiliki akses penuh ke seluruh fitur PawfectCare.'
                       : 'Akun berhasil masuk. Pilih mode yang ingin digunakan.'}
                   </p>
                 </div>
@@ -392,7 +392,7 @@ export function AuthScreen() {
                       </div>
                     ))}
                     <div className="bg-blue-50 border border-blue-100 rounded-2xl p-4 text-sm text-blue-700 leading-relaxed">
-                      💡 Ingin mencoba alat Smart Cat Feeder secara langsung?{' '}
+                      💡 Ingin mencoba alat PawfectCare secara langsung?{' '}
                       <span className="font-black">Silakan hubungi admin.</span>
                     </div>
                   </div>

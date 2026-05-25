@@ -1,5 +1,5 @@
 /**
- * FelineGuard IoT Types
+ * PawfectCare IoT Types
  */
 
 export enum UserRole {
@@ -12,6 +12,7 @@ export interface UserProfile {
   email: string;
   role: UserRole;
   onboardingCompleted: boolean;
+  claimedDeviceId: string | null;
   createdAt: number;
 }
 
@@ -87,14 +88,22 @@ export interface FeedingLog {
 
 export interface DeviceStatus {
   id: string;
+  // Claim system
+  isClaimed?: boolean;
+  claimedBy?: string | null;
+  claimedAt?: number | null;
+  linkedCatId?: string | null;
+  deviceName?: string;
+  deviceType?: string;
+  // Legacy fields (tetap ada untuk backward compat)
   ownerId?: string;
-  deviceNumber?: 1 | 2; // ESP1 or ESP2
-  name?: string; // "Feeder ESP 1" or "Feeder ESP 2"
+  deviceNumber?: 1 | 2;
+  name?: string;
   isOnline: boolean;
   lastPulse: number;
-  foodStockLevel: number; // percentage 0-100
-  currentWeightOnScale: number; // grams currently in bowl
-  lastWeightBeforeDispense?: number; // grams before last dispense, for eaten detection
+  foodStockLevel: number;
+  currentWeightOnScale: number;
+  lastWeightBeforeDispense?: number;
   servoStatus: 'idle' | 'active' | 'jammed';
   calibrationFactor: number;
 }

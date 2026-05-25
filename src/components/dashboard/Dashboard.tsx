@@ -1,14 +1,13 @@
 import { useState } from 'react';
-import { Database, AlertCircle, Weight, Wifi, WifiOff, Settings2, Utensils, Loader2, CheckCircle2, XCircle, AlertTriangle, X, ChevronLeft, ChevronRight, Copy, Check, Link2, Clock } from 'lucide-react';
+import { Layers, AlertCircle, Weight, Wifi, WifiOff, Settings2, Utensils, X, XCircle, ChevronLeft, ChevronRight, Copy, Check, Link2, Clock, TrendingUp, Activity, BarChart3, Info } from 'lucide-react';
 import {
   AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip,
   ResponsiveContainer, BarChart, Bar,
+  LineChart, Line, PieChart, Pie, Cell, ReferenceLine,
 } from 'recharts';
 import { motion, AnimatePresence } from 'motion/react';
 import { useCatData } from '../../lib/useCatData';
 import { useAuth } from '../../lib/AuthContext';
-import { doc, setDoc } from 'firebase/firestore';
-import { db } from '../../lib/firebase';
 import { cn } from '../../lib/utils';
 import { FeedingLog, UserRole } from '../../types';
 
@@ -249,48 +248,13 @@ function FeedingCalendar({ feedingLogs, dailyTarget }: { feedingLogs: FeedingLog
   );
 }
 
-// ── Circular Gauge (speedometer style) ───────────────────────────────────────
-
-function CircularGauge({
-  value, max, unit = 'GR', overrideColor,
-}: {
-  value: number;
-  max: number;
-  unit?: string;
-  overrideColor?: string;
-}) {
-  const pct = max > 0 ? Math.min(value / max, 1) : 0;
-  const r = 45;
-  const circumference = 2 * Math.PI * r;
-  const arcLength = circumference * 0.75;
-  const fillLength = arcLength * pct;
-  const isOverfed = max > 0 && value > max;
-  const color = overrideColor ?? (isOverfed ? '#ef4444' : pct > 0.75 ? '#f59e0b' : '#22c55e');
-
-  return (
-    <div className="relative w-28 h-28 shrink-0">
-      <svg width="112" height="112" viewBox="0 0 120 120" className="rotate-[-225deg]">
-        <circle cx="60" cy="60" r={r} fill="none" stroke="#e5e7eb"
-          strokeWidth="10" strokeDasharray={`${arcLength} ${circumference}`} strokeLinecap="round" />
-        {fillLength > 1 && (
-          <circle cx="60" cy="60" r={r} fill="none" stroke={color}
-            strokeWidth="10" strokeDasharray={`${fillLength} ${circumference}`} strokeLinecap="round" />
-        )}
-      </svg>
-      <div className="absolute inset-0 flex flex-col items-center justify-center">
-        <span className="text-2xl font-black text-gray-900 leading-none">{value}</span>
-        <span className="text-xs text-gray-400 font-bold">{unit}</span>
-      </div>
-    </div>
-  );
-}
-
 // ── Cat Monitoring Card ───────────────────────────────────────────────────────
 
-function CatMonitoringCard({ feedingLogs, bowlWeight, catName }: {
+function CatMonitoringCard({ feedingLogs, bowlWeight, catName, catPhotoUrl }: {
   feedingLogs: { timestamp: number; amountDispensed: number; notes?: string }[];
   bowlWeight: number;
   catName: string;
+  catPhotoUrl?: string;
 }) {
   const lastLog = feedingLogs[0];
   const lastTime = lastLog
@@ -323,8 +287,12 @@ function CatMonitoringCard({ feedingLogs, bowlWeight, catName }: {
       {/* Cat info area */}
       <div className="flex items-center gap-4 bg-gray-50 rounded-2xl px-4 py-3 border border-gray-100">
         <div className="relative">
-          <div className="w-14 h-14 rounded-full bg-amber-100 flex items-center justify-center text-3xl">
-            🐈
+          <div className="w-14 h-14 rounded-full bg-amber-100 overflow-hidden border-2 border-amber-200">
+            <img
+              src={catPhotoUrl || `https://api.dicebear.com/7.x/bottts/svg?seed=${catName}`}
+              alt={catName}
+              className="w-full h-full object-cover"
+            />
           </div>
           {isEating && isRecent && (
             <span className="absolute -top-1 -right-1 w-4 h-4 bg-green-400 rounded-full animate-ping" />
@@ -373,15 +341,9 @@ function CatMonitoringCard({ feedingLogs, bowlWeight, catName }: {
 // ── Dashboard ─────────────────────────────────────────────────────────────────
 
 export function Dashboard() {
-  const { user, profile } = useAuth();
+  const { profile } = useAuth();
   const isAdmin = profile?.role === UserRole.SUPER_ADMIN;
   const { cat, device, feedingLogs, targetOwnerId, loading } = useCatData();
-
-  // Manual feed modal state
-  const [showModal, setShowModal] = useState(false);
-  const [feedingAmount, setFeedingAmount] = useState(50);
-  const [isFeeding, setIsFeeding] = useState(false);
-  const [feedResult, setFeedResult] = useState<'success' | 'error' | null>(null);
 
   // Connect device modal
   const [showConnectModal, setShowConnectModal] = useState(false);
@@ -394,31 +356,31 @@ export function Dashboard() {
     });
   };
 
-  // ── Today's feeding total from real logs ──────────────
-  const todayStr = new Date().toISOString().split('T')[0];
+  // ── Profile-aware log filtering ───────────────────────
+  // All logs are reset when profile changes (profileUpdatedAt is the cutoff)
   const todayStart = new Date();
   todayStart.setHours(0, 0, 0, 0);
   const todayStartMs = todayStart.getTime();
+
+  // Filter ALL logs by profileUpdatedAt so charts reset when profile changes
+  const profileUpdatedAt = cat?.profileUpdatedAt ?? 0;
+  const filteredLogs = feedingLogs.filter((l) => l.timestamp >= profileUpdatedAt);
+  const hiddenLogsCount = feedingLogs.length - filteredLogs.length;
+
+  // Today's logs: since start of today (or profile update if it happened today)
   const profileUpdatedTodayMs =
-    cat?.profileUpdatedAt && cat.profileUpdatedAt >= todayStartMs
-      ? cat.profileUpdatedAt
-      : todayStartMs;
-  const todayLogs = feedingLogs.filter(
-    (l) => l.timestamp >= profileUpdatedTodayMs
-  );
+    profileUpdatedAt >= todayStartMs ? profileUpdatedAt : todayStartMs;
+  const todayLogs = filteredLogs.filter((l) => l.timestamp >= todayStartMs);
   const todayTotal = Math.round(
-    todayLogs.reduce((sum, l) => sum + (l.amountDispensed ?? 0), 0)
+    filteredLogs
+      .filter((l) => l.timestamp >= profileUpdatedTodayMs)
+      .reduce((sum, l) => sum + (l.amountDispensed ?? 0), 0)
   );
 
   const dailyTarget = cat?.dailyGramTarget ?? 0;
   const progressPct =
     dailyTarget > 0 ? Math.min(Math.round((todayTotal / dailyTarget) * 100), 100) : 0;
   const foodStock = device?.foodStockLevel ?? 0;
-
-  // ── Would this feed exceed the daily limit? ───────────
-  const remainingToday = dailyTarget > 0 ? Math.max(0, dailyTarget - todayTotal) : Infinity;
-  const wouldExceed = dailyTarget > 0 && (todayTotal + feedingAmount) > dailyTarget;
-  const isAtLimit = cat?.dailyLimitReachedDate === todayStr;
 
   // ── Area chart: feeding by 4-hour buckets today ───────
   const bucketLabels = ['00:00', '04:00', '08:00', '12:00', '16:00', '20:00'];
@@ -435,10 +397,10 @@ export function Dashboard() {
     weight: Math.round(buckets[time]),
   }));
 
-  // ── Bar chart: weekly totals ──────────────────────────
+  // ── Bar chart: weekly totals (filteredLogs resets on profile change) ─────────
   const weeklyMap: Record<string, number> = {};
   const now = Date.now();
-  feedingLogs.forEach((log) => {
+  filteredLogs.forEach((log) => {
     const daysAgo = Math.floor((now - log.timestamp) / 86400000);
     if (daysAgo < 7) {
       const label = DAYS_ID[new Date(log.timestamp).getDay()];
@@ -450,44 +412,54 @@ export function Dashboard() {
     amount: Math.round(weeklyMap[day] ?? 0),
   }));
 
+  // ── Analytics: 7-day line chart ───────────────────────
+  const last7Days = Array.from({ length: 7 }, (_, i) => {
+    const d = new Date(now - (6 - i) * 86400000);
+    return { day: DAYS_ID[d.getDay()], dateStr: d.toDateString() };
+  });
+  const dayTotals: Record<string, number> = {};
+  filteredLogs.forEach((log) => {
+    const key = new Date(log.timestamp).toDateString();
+    dayTotals[key] = (dayTotals[key] ?? 0) + (log.amountDispensed ?? 0);
+  });
+  const lineData = last7Days.map(({ day, dateStr }) => ({
+    day,
+    gram: Math.round(dayTotals[dateStr] ?? 0),
+  }));
+  const dailyAvg = Math.round(lineData.reduce((s, d) => s + d.gram, 0) / lineData.length);
+  const nonZero = lineData.filter((d) => d.gram > 0);
+  const maxGram = nonZero.length > 0 ? Math.max(...nonZero.map((d) => d.gram)) : 0;
+  const minGram = nonZero.length > 0 ? Math.min(...nonZero.map((d) => d.gram)) : 0;
+  const variation = dailyAvg > 0 ? Math.round(((maxGram - minGram) / dailyAvg) * 100) : 0;
+
+  // ── Analytics: distribution by time of day ────────────
+  const periodMap: Record<string, number> = { Pagi: 0, Siang: 0, Sore: 0, Malam: 0 };
+  filteredLogs.forEach((log) => {
+    const hour = new Date(log.timestamp).getHours();
+    if (hour < 11) periodMap['Pagi'] += log.amountDispensed ?? 0;
+    else if (hour < 15) periodMap['Siang'] += log.amountDispensed ?? 0;
+    else if (hour < 19) periodMap['Sore'] += log.amountDispensed ?? 0;
+    else periodMap['Malam'] += log.amountDispensed ?? 0;
+  });
+  const timeBarData = Object.entries(periodMap).map(([period, grams]) => ({
+    period,
+    grams: Math.round(grams),
+  }));
+
+  // ── Analytics: manual vs scheduled pie ────────────────
+  const manualCount = filteredLogs.filter((l) => l.notes === 'manual').length;
+  const scheduledCount = filteredLogs.length - manualCount;
+  const totalLogs = filteredLogs.length || 1;
+  const pieData = [
+    { name: 'Terjadwal', value: Math.round((scheduledCount / totalLogs) * 100) },
+    { name: 'Manual', value: Math.round((manualCount / totalLogs) * 100) },
+  ];
+  const PIE_COLORS = ['#F59E0B', '#374151'];
+
   // ── Alerts ────────────────────────────────────────────
   const isOverfed = dailyTarget > 0 && todayTotal >= dailyTarget;
   const isLowStock = foodStock > 0 && foodStock < 20;
   const isOffline = device !== null && !device.isOnline;
-
-  // ── Manual feed handler ───────────────────────────────
-  const handleManualFeed = async () => {
-    if (!user || isFeeding) return;
-    setIsFeeding(true);
-    setFeedResult(null);
-    try {
-      const logId = `${targetOwnerId}_${Date.now()}`;
-      await setDoc(doc(db, 'feedingLogs', logId), {
-        id: logId,
-        catId: `${targetOwnerId}_main`,
-        timestamp: Date.now(),
-        amountRequested: feedingAmount,
-        amountDispensed: feedingAmount,
-        status: 'success',
-        notes: 'manual',
-      });
-      setFeedResult('success');
-    } catch {
-      setFeedResult('error');
-    } finally {
-      setIsFeeding(false);
-      setTimeout(() => {
-        setFeedResult(null);
-        if (feedResult !== 'error') setShowModal(false);
-      }, 2500);
-    }
-  };
-
-  const openModal = () => {
-    setFeedResult(null);
-    setFeedingAmount(50);
-    setShowModal(true);
-  };
 
   if (loading) {
     return (
@@ -569,6 +541,29 @@ export function Dashboard() {
         </div>
       )}
 
+      {/* ── PROFILE RESET BANNER ── */}
+      {profileUpdatedAt > 0 && hiddenLogsCount > 0 && (
+        <div className="flex items-start gap-3 bg-blue-50 border border-blue-100 rounded-2xl px-5 py-4">
+          <Info className="w-4 h-4 text-blue-400 shrink-0 mt-0.5" />
+          <div>
+            <p className="text-sm font-bold text-blue-700">
+              Data analitik direset setelah profil diperbarui
+            </p>
+            <p className="text-xs text-blue-500 mt-0.5">
+              Profil kucing diperbarui pada{' '}
+              <span className="font-semibold">
+                {new Date(profileUpdatedAt).toLocaleDateString('id-ID', {
+                  day: 'numeric', month: 'long', year: 'numeric',
+                  hour: '2-digit', minute: '2-digit',
+                })}
+              </span>
+              . Analitik sekarang hanya menghitung data sejak profil terbaru.{' '}
+              {hiddenLogsCount} log sebelumnya disembunyikan agar target feeding tidak tercampur data profil lama.
+            </p>
+          </div>
+        </div>
+      )}
+
       {/* ── NO DATA STATE ── */}
       {!cat && (
         <div className="bg-amber-50 border border-amber-200 rounded-2xl px-5 py-4 flex items-center gap-3">
@@ -646,28 +641,6 @@ export function Dashboard() {
               </div>
             </div>
 
-            {/* FEED BUTTON — hanya tampil untuk admin */}
-            {isAdmin && <div className="shrink-0">
-              <button
-                type="button"
-                onClick={openModal}
-                disabled={isAtLimit}
-                className={cn(
-                  'flex items-center gap-4 px-8 py-5 rounded-3xl font-bold text-2xl shadow-lg transition-all',
-                  isAtLimit
-                    ? 'bg-gray-100 text-gray-400 cursor-not-allowed shadow-none'
-                    : 'bg-amber-400 hover:bg-amber-500 text-white shadow-amber-200'
-                )}
-              >
-                <Utensils className="w-8 h-8" />
-                Beri Makan
-              </button>
-              {isAtLimit && (
-                <p className="text-xs text-red-500 font-semibold mt-2 text-center">
-                  Limit harian tercapai
-                </p>
-              )}
-            </div>}
           </div>
         </div>
 
@@ -703,124 +676,157 @@ export function Dashboard() {
       {/* ── SMALL CARDS ── */}
       <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4">
 
-        {/* Status Tabung — circular gauge */}
-        <div className="bg-white rounded-3xl border border-gray-100 p-5 shadow-sm flex flex-col gap-3">
-          <div className="flex items-center gap-2">
-            <Database className="w-5 h-5 text-gray-400" />
-            <span className="text-sm text-gray-500 font-semibold">Status Tabung</span>
+        {/* 1 — Food Stock Level */}
+        <div className="bg-white rounded-3xl border border-gray-100 p-5 shadow-sm flex flex-col gap-4">
+          <div className="flex items-center justify-between">
+            <div className="w-10 h-10 rounded-2xl bg-amber-50 flex items-center justify-center">
+              <Layers className="w-5 h-5 text-amber-500" />
+            </div>
+            <span className={cn('text-xs font-bold px-3 py-1 rounded-full',
+              !device           ? 'bg-gray-100 text-gray-400'
+              : foodStock > 50  ? 'bg-green-100 text-green-700'
+              : foodStock > 20  ? 'bg-yellow-100 text-yellow-700'
+              :                   'bg-red-100 text-red-700'
+            )}>
+              {!device ? 'No Device' : foodStock > 50 ? 'High' : foodStock > 20 ? 'Medium' : 'Low'}
+            </span>
           </div>
-          <div className="flex items-center gap-4">
-            <CircularGauge
-              value={device ? foodStock : 0}
-              max={100}
-              unit="%"
-              overrideColor={
-                !device ? '#d1d5db'
-                : foodStock < 20 ? '#ef4444'
-                : foodStock < 50 ? '#f59e0b'
-                : '#22c55e'
-              }
-            />
-            <div className="flex-1 min-w-0">
-              <p className={cn(
-                'text-lg font-black leading-tight',
-                !device ? 'text-gray-300'
-                : foodStock < 20 ? 'text-red-500'
-                : foodStock < 50 ? 'text-yellow-500'
-                : 'text-green-500'
-              )}>
-                {!device ? '—'
-                  : foodStock < 20 ? 'Hampir Habis'
-                  : foodStock < 50 ? 'Berkurang'
-                  : 'Cukup'}
-              </p>
-              <p className="text-xs text-gray-400 mt-1">Sisa: {device ? `${foodStock}%` : '—'}</p>
-              <div className="mt-2 bg-gray-100 rounded-full h-1.5 overflow-hidden">
-                <motion.div
-                  initial={{ width: 0 }}
-                  animate={{ width: `${foodStock}%` }}
-                  transition={{ duration: 0.8 }}
-                  className={cn('h-full rounded-full',
-                    foodStock < 20 ? 'bg-red-400' : foodStock < 50 ? 'bg-yellow-400' : 'bg-green-400'
-                  )}
-                />
-              </div>
+
+          <div>
+            <p className="text-xs text-gray-400 font-medium">Food Stock Level</p>
+            <div className="flex items-baseline gap-1.5 mt-1">
+              <span className="text-4xl font-black text-gray-900">{device ? `${foodStock}%` : '—'}</span>
+              {device && (
+                <span className={cn('text-sm font-semibold',
+                  foodStock > 50 ? 'text-amber-500' : foodStock > 20 ? 'text-yellow-500' : 'text-red-500'
+                )}>
+                  {foodStock > 50 ? 'Full' : foodStock > 20 ? 'Medium' : 'Critical'}
+                </span>
+              )}
             </div>
           </div>
+
+          {/* Segmented bar */}
+          <div className="flex gap-1.5">
+            {Array.from({ length: 5 }, (_, i) => {
+              const filled = device && (i + 1) * 20 <= foodStock;
+              return (
+                <div key={i} className={cn('h-2 flex-1 rounded-full',
+                  filled
+                    ? foodStock > 50 ? 'bg-amber-400' : foodStock > 20 ? 'bg-yellow-400' : 'bg-red-400'
+                    : 'bg-gray-100'
+                )} />
+              );
+            })}
+          </div>
         </div>
 
-        {/* Berat Makanan — circular gauge */}
-        <div className="bg-white rounded-3xl border border-gray-100 p-5 shadow-sm flex flex-col gap-3">
-          <div className="flex items-center gap-2">
-            <Weight className="w-5 h-5 text-gray-400" />
-            <span className="text-sm text-gray-500 font-semibold">Berat Makanan</span>
+        {/* 2 — Current Bowl Weight */}
+        <div className="bg-white rounded-3xl border border-gray-100 p-5 shadow-sm flex flex-col gap-4">
+          <div className="flex items-center justify-between">
+            <div className="w-10 h-10 rounded-2xl bg-blue-50 flex items-center justify-center">
+              <Weight className="w-5 h-5 text-blue-500" />
+            </div>
+            <span className={cn('text-xs font-bold px-3 py-1 rounded-full',
+              device?.lastPulse && Date.now() - device.lastPulse < 120000
+                ? 'bg-green-100 text-green-700'
+                : 'bg-gray-100 text-gray-400'
+            )}>
+              {!device ? 'No Device'
+               : device.lastPulse && Date.now() - device.lastPulse < 120000 ? 'Updated Just Now'
+               : device.lastPulse ? `${Math.floor((Date.now() - device.lastPulse) / 60000)}m ago`
+               : 'No Signal'}
+            </span>
           </div>
-          <div className="flex items-center gap-4">
-            <CircularGauge
-              value={device?.currentWeightOnScale ?? 0}
-              max={dailyTarget || 100}
-            />
-            <div className="flex-1 min-w-0">
-              <p className="text-xs text-gray-400">Target: {dailyTarget > 0 ? `${dailyTarget}g` : '—'}</p>
-              <div className="mt-2 bg-gray-100 rounded-full h-1.5 overflow-hidden">
-                <motion.div
-                  initial={{ width: 0 }}
-                  animate={{ width: `${dailyTarget > 0 ? Math.min(((device?.currentWeightOnScale ?? 0) / dailyTarget) * 100, 100) : 0}%` }}
-                  transition={{ duration: 0.8 }}
-                  className={cn('h-full rounded-full', dailyTarget > 0 && (device?.currentWeightOnScale ?? 0) > dailyTarget ? 'bg-red-400' : 'bg-green-400')}
-                />
-              </div>
-              <p className="text-xs text-gray-400 mt-1">
-                {device?.currentWeightOnScale ?? 0} / {dailyTarget > 0 ? dailyTarget : '—'} gram
-              </p>
+
+          <div>
+            <p className="text-xs text-gray-400 font-medium">Current Bowl Weight</p>
+            <div className="flex items-baseline gap-1.5 mt-1">
+              <span className="text-4xl font-black text-gray-900">{device?.currentWeightOnScale ?? 0}g</span>
+              <span className="text-sm font-semibold text-gray-400">Remaining</span>
             </div>
           </div>
-        </div>
 
-        {/* Status Servo */}
-        <div className="bg-white rounded-3xl border border-gray-100 p-5 shadow-sm flex flex-col gap-3">
-          <div className="flex items-center gap-2">
-            <Settings2 className="w-5 h-5 text-gray-400" />
-            <span className="text-sm text-gray-500 font-semibold">Status Servo</span>
-          </div>
-          <p className={`text-3xl font-black mt-1 ${
-            device?.servoStatus === 'active' ? 'text-amber-500' :
-            device?.servoStatus === 'jammed' ? 'text-red-500' : 'text-green-500'
-          }`}>
-            {device?.servoStatus === 'active' ? 'Aktif' :
-             device?.servoStatus === 'jammed' ? 'Macet' :
-             device ? 'Siaga' : '—'}
-          </p>
-          <div className="mt-auto h-1.5 bg-gray-100 rounded-full overflow-hidden">
-            <div className={cn('h-full rounded-full w-full',
-              device?.servoStatus === 'jammed' ? 'bg-red-400' :
-              device?.servoStatus === 'active' ? 'bg-amber-400 animate-pulse' : 'bg-green-400'
-            )} />
-          </div>
-        </div>
-
-        {/* Perangkat */}
-        <div className="bg-white rounded-3xl border border-gray-100 p-5 shadow-sm flex flex-col gap-3">
-          <div className="flex items-center gap-2">
-            <Wifi className="w-5 h-5 text-gray-400" />
-            <span className="text-sm text-gray-500 font-semibold">Perangkat</span>
-          </div>
-          <p className={`text-3xl font-black mt-1 ${device?.isOnline ? 'text-blue-500' : 'text-gray-400'}`}>
-            {device ? (device.isOnline ? 'Online' : 'Offline') : '—'}
-          </p>
-          {device?.lastPulse && (
-            <p className="text-xs text-gray-400 mt-auto">
-              Terakhir: {new Date(device.lastPulse).toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' })}
+          {todayLogs.length > 0 && (
+            <p className="text-xs text-gray-400 flex items-center gap-1">
+              <span>↘</span>
+              <span>-{todayLogs[0].amountDispensed}g dari pemberian terakhir</span>
             </p>
           )}
-          <div className="h-1.5 bg-gray-100 rounded-full overflow-hidden">
-            <motion.div
-              initial={{ width: 0 }}
-              animate={{ width: device?.isOnline ? '100%' : '0%' }}
-              transition={{ duration: 0.8 }}
-              className="h-full rounded-full bg-blue-400"
-            />
+        </div>
+
+        {/* 3 — Servo Status */}
+        <div className="bg-white rounded-3xl border border-gray-100 p-5 shadow-sm flex flex-col">
+          <div className="flex items-center justify-between mb-4">
+            <div className="w-10 h-10 rounded-2xl bg-orange-50 flex items-center justify-center">
+              <Settings2 className="w-5 h-5 text-orange-500" />
+            </div>
+            {device && (
+              <span className={cn('flex items-center gap-1.5 text-xs font-bold px-3 py-1 rounded-full',
+                device.servoStatus === 'jammed'  ? 'bg-red-100 text-red-700'
+                : device.servoStatus === 'active' ? 'bg-amber-100 text-amber-700'
+                :                                   'bg-green-100 text-green-700'
+              )}>
+                <span className={cn('w-1.5 h-1.5 rounded-full',
+                  device.servoStatus === 'jammed'  ? 'bg-red-500'
+                  : device.servoStatus === 'active' ? 'bg-amber-500 animate-pulse'
+                  :                                   'bg-green-500'
+                )} />
+                {device.servoStatus === 'jammed' ? 'Error' : device.servoStatus === 'active' ? 'Active' : 'Ready'}
+              </span>
+            )}
           </div>
+
+          <p className="text-xs text-gray-400 font-medium">Servo Status</p>
+          <p className="text-4xl font-black text-gray-900 mt-1 flex-1">
+            {device?.servoStatus === 'active' ? 'Running'
+             : device?.servoStatus === 'jammed' ? 'Jammed'
+             : device ? 'Idle' : '—'}
+          </p>
+
+          <div className="pt-3 mt-3 border-t border-gray-50 flex justify-between items-center">
+            <span className="text-xs text-gray-400">Last calibration</span>
+            <span className="text-xs font-bold text-gray-600">
+              {device?.lastPulse
+                ? (() => {
+                    const d = Math.floor((Date.now() - device.lastPulse) / 86400000);
+                    return d === 0 ? 'Today' : `${d}d ago`;
+                  })()
+                : '—'}
+            </span>
+          </div>
+        </div>
+
+        {/* 4 — Device Status */}
+        <div className="bg-white rounded-3xl border border-gray-100 p-5 shadow-sm flex flex-col relative overflow-hidden">
+          <div className="flex items-center justify-between mb-4">
+            <div className="w-10 h-10 rounded-2xl bg-violet-50 flex items-center justify-center">
+              <Wifi className="w-5 h-5 text-violet-500" />
+            </div>
+            <span className="text-xs font-bold px-3 py-1 rounded-full bg-gray-100 text-gray-500">5GHz</span>
+          </div>
+
+          <p className="text-xs text-gray-400 font-medium">Device Status</p>
+          <div className="flex items-center gap-2 mt-1 flex-1">
+            <span className="text-4xl font-black text-gray-900">
+              {device ? (device.isOnline ? 'Online' : 'Offline') : '—'}
+            </span>
+            {device?.isOnline && (
+              <span className="w-3 h-3 bg-green-400 rounded-full animate-pulse" />
+            )}
+          </div>
+
+          {/* Decorative network nodes */}
+          <svg className="absolute bottom-3 right-3 opacity-[0.06] w-24 h-24" viewBox="0 0 80 80" fill="none">
+            <circle cx="62" cy="62" r="6" fill="#374151" />
+            <circle cx="42" cy="50" r="5" fill="#374151" />
+            <circle cx="62" cy="32" r="5" fill="#374151" />
+            <circle cx="22" cy="42" r="4" fill="#374151" />
+            <line x1="62" y1="62" x2="42" y2="50" stroke="#374151" strokeWidth="1.5" />
+            <line x1="42" y1="50" x2="62" y2="32" stroke="#374151" strokeWidth="1.5" />
+            <line x1="42" y1="50" x2="22" y2="42" stroke="#374151" strokeWidth="1.5" />
+            <line x1="62" y1="62" x2="62" y2="32" stroke="#374151" strokeWidth="1" strokeDasharray="2 3" />
+          </svg>
         </div>
       </div>
 
@@ -884,13 +890,136 @@ export function Dashboard() {
 
       {/* ── MONITORING KUCING ── */}
       <CatMonitoringCard
-        feedingLogs={feedingLogs}
+        feedingLogs={filteredLogs}
         bowlWeight={device?.currentWeightOnScale ?? 0}
         catName={cat?.name ?? 'Kucing'}
+        catPhotoUrl={(cat as any)?.photoUrl}
       />
 
+      {/* ── ANALITIK PAKAN ── */}
+      <div className="space-y-5">
+        {/* Header */}
+        <div className="flex items-center justify-between">
+          <div>
+            <h2 className="text-2xl font-black text-gray-800 flex items-center gap-2">
+              <BarChart3 className="w-6 h-6 text-amber-500" /> Analitik Pakan
+            </h2>
+            <p className="text-sm text-gray-400 mt-1">
+              Data sejak profil terakhir diperbarui
+              {profileUpdatedAt > 0 && (
+                <span className="ml-1 text-amber-500 font-semibold">
+                  ({new Date(profileUpdatedAt).toLocaleDateString('id-ID', { day: 'numeric', month: 'short', year: 'numeric' })})
+                </span>
+              )}
+            </p>
+          </div>
+          <div className="flex items-center gap-2 bg-gray-900 text-white px-4 py-2 rounded-2xl">
+            <Activity className="w-4 h-4 text-amber-400" />
+            <span className="text-sm font-black">
+              {dailyAvg > 0 ? `${dailyAvg}g` : '—'}
+            </span>
+            <span className="text-xs text-white/50">rata-rata/hari</span>
+            {variation > 0 && (
+              <span className="text-xs text-white/40 ml-1">±{variation}%</span>
+            )}
+          </div>
+        </div>
+
+        {/* Row 1: Line chart + Pie chart */}
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-5">
+
+          {/* Line chart: 7-day consumption */}
+          <div className="lg:col-span-2 bg-white rounded-3xl border border-gray-100 p-6 shadow-sm">
+            <div className="flex items-center justify-between mb-6">
+              <h4 className="text-lg font-black text-gray-800 flex items-center gap-2">
+                <TrendingUp className="text-amber-500 w-5 h-5" /> Konsumsi 7 Hari Terakhir
+              </h4>
+              {dailyTarget > 0 && (
+                <span className="text-xs font-black text-gray-400 bg-gray-50 px-3 py-1 rounded-full">
+                  Target: {dailyTarget}g/hari
+                </span>
+              )}
+            </div>
+            <div className="h-56">
+              <ResponsiveContainer width="100%" height="100%">
+                <LineChart data={lineData}>
+                  <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#F1F5F9" />
+                  <XAxis dataKey="day" axisLine={false} tickLine={false} tick={{ fontSize: 11, fill: '#94A3B8' }} />
+                  <YAxis hide />
+                  {dailyTarget > 0 && (
+                    <ReferenceLine y={dailyTarget} stroke="#22c55e" strokeDasharray="4 4" strokeWidth={1.5}
+                      label={{ value: `${dailyTarget}g`, position: 'insideTopRight', fontSize: 10, fill: '#22c55e' }} />
+                  )}
+                  <Tooltip
+                    formatter={(v) => [`${v}g`, 'Dikonsumsi']}
+                    contentStyle={{ borderRadius: '12px', border: 'none', boxShadow: '0 4px 16px rgba(0,0,0,0.08)' }}
+                  />
+                  <Line type="monotone" dataKey="gram" stroke="#F59E0B" strokeWidth={3}
+                    dot={{ r: 4, fill: '#F59E0B', strokeWidth: 2, stroke: '#fff' }} />
+                </LineChart>
+              </ResponsiveContainer>
+            </div>
+          </div>
+
+          {/* Pie chart: manual vs scheduled */}
+          <div className="bg-white rounded-3xl border border-gray-100 p-6 shadow-sm flex flex-col">
+            <h4 className="text-lg font-black text-gray-800 mb-4">Terjadwal vs Manual</h4>
+            <div className="flex-1 flex flex-col items-center justify-center gap-4">
+              <div className="w-full h-40">
+                <ResponsiveContainer width="100%" height="100%">
+                  <PieChart>
+                    <Pie data={pieData} innerRadius={45} outerRadius={68} paddingAngle={5} dataKey="value">
+                      {pieData.map((_, index) => (
+                        <Cell key={`cell-${index}`} fill={PIE_COLORS[index % PIE_COLORS.length]} stroke="none" />
+                      ))}
+                    </Pie>
+                    <Tooltip formatter={(v) => [`${v}%`, '']} />
+                  </PieChart>
+                </ResponsiveContainer>
+              </div>
+              <div className="flex gap-5 w-full justify-center">
+                {pieData.map((item, idx) => (
+                  <div key={item.name} className="flex items-center gap-2">
+                    <div className={cn('w-3 h-3 rounded-full shrink-0', idx === 0 ? 'bg-amber-400' : 'bg-gray-800')} />
+                    <div>
+                      <p className="text-xs text-gray-500">{item.name}</p>
+                      <p className="text-lg font-black text-gray-900">{item.value}%</p>
+                    </div>
+                  </div>
+                ))}
+              </div>
+              <p className="text-xs text-gray-400 text-center">{filteredLogs.length} total pemberian</p>
+            </div>
+          </div>
+        </div>
+
+        {/* Row 2: Bar chart by time of day */}
+        <div className="bg-white rounded-3xl border border-gray-100 p-6 shadow-sm">
+          <div className="flex items-center justify-between mb-6">
+            <h4 className="text-lg font-black text-gray-800 flex items-center gap-2">
+              <BarChart3 className="text-blue-500 w-5 h-5" /> Distribusi Waktu Pemberian
+            </h4>
+            <span className="text-xs font-bold text-blue-500 bg-blue-50 px-3 py-1 rounded-full">
+              Total: {Math.round(timeBarData.reduce((s, d) => s + d.grams, 0))}g
+            </span>
+          </div>
+          <div className="h-56">
+            <ResponsiveContainer width="100%" height="100%">
+              <BarChart data={timeBarData}>
+                <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f3f4f6" />
+                <XAxis dataKey="period" axisLine={false} tickLine={false} tick={{ fontSize: 12, fill: '#94A3B8' }} />
+                <YAxis tickLine={false} axisLine={false} unit="g" />
+                <Tooltip formatter={(v) => [`${v}g`, 'Pakan']} cursor={{ fill: '#F8FAFC' }}
+                  contentStyle={{ borderRadius: '12px' }} />
+                <Bar dataKey="grams" fill="#F59E0B" radius={[10, 10, 0, 0]} barSize={56} />
+              </BarChart>
+            </ResponsiveContainer>
+          </div>
+        </div>
+      </div>
+
       {/* ── FEEDING CALENDAR ── */}
-      <FeedingCalendar feedingLogs={feedingLogs} dailyTarget={dailyTarget} />
+      <FeedingCalendar feedingLogs={filteredLogs} dailyTarget={dailyTarget} />
 
       {/* ── CONNECT DEVICE MODAL ── */}
       <AnimatePresence>
@@ -950,11 +1079,11 @@ export function Dashboard() {
               <div className="space-y-3">
                 <p className="text-xs font-black uppercase tracking-widest text-gray-400">Langkah Konfigurasi ESP32</p>
                 {[
-                  { num: '1', text: 'Upload firmware ke ESP32 dengan library Firebase ESP Client.' },
-                  { num: '2', text: `Set OWNER_UID = "${targetOwnerId.slice(0, 8)}..." di config firmware.` },
-                  { num: '3', text: 'Set WIFI_SSID dan WIFI_PASSWORD sesuai jaringan lokal.' },
-                  { num: '4', text: 'ESP32 akan menulis ke path: devices/{ownerId}_device di Firestore.' },
-                  { num: '5', text: 'Setelah terhubung, status perangkat muncul otomatis di dashboard.' },
+                  { num: '1', text: 'Pastikan perangkat sudah terdaftar di Firestore oleh pengelola sistem (collection: devices/).' },
+                  { num: '2', text: 'Upload firmware ke ESP32 dengan library Firebase ESP Client.' },
+                  { num: '3', text: 'Set DEVICE_ID sesuai ID perangkat yang sudah diklaim di firmware.' },
+                  { num: '4', text: 'Set WIFI_SSID dan WIFI_PASSWORD sesuai jaringan lokal.' },
+                  { num: '5', text: 'ESP32 menulis heartbeat ke devices/{DEVICE_ID}. Setelah online, status muncul otomatis.' },
                 ].map((s) => (
                   <div key={s.num} className="flex items-start gap-3">
                     <div className="w-6 h-6 rounded-full bg-orange-100 text-orange-600 text-xs font-black flex items-center justify-center shrink-0 mt-0.5">
@@ -967,8 +1096,8 @@ export function Dashboard() {
 
               <div className="mt-6 p-4 bg-blue-50 border border-blue-100 rounded-2xl">
                 <p className="text-xs text-blue-700 font-semibold">
-                  Firestore path yang harus ditulis ESP32:<br />
-                  <code className="font-black">devices/{targetOwnerId}_device</code>
+                  Firestore path yang ditulis ESP32:<br />
+                  <code className="font-black">devices/{'{'}{'{'}DEVICE_ID{'}'}{'}'}  </code><span className="font-normal">(bukan owner UID)</span>
                 </p>
               </div>
             </motion.div>
@@ -976,172 +1105,6 @@ export function Dashboard() {
         )}
       </AnimatePresence>
 
-      {/* ── MANUAL FEED MODAL ── */}
-      <AnimatePresence>
-        {showModal && (
-          <motion.div
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40 backdrop-blur-sm"
-            onClick={(e) => { if (e.target === e.currentTarget && !isFeeding) setShowModal(false); }}
-          >
-            <motion.div
-              initial={{ scale: 0.92, opacity: 0, y: 20 }}
-              animate={{ scale: 1, opacity: 1, y: 0 }}
-              exit={{ scale: 0.92, opacity: 0, y: 20 }}
-              transition={{ type: 'spring', damping: 20, stiffness: 300 }}
-              className="bg-white rounded-4xl p-8 w-full max-w-md shadow-2xl relative"
-            >
-              {/* Close */}
-              {!isFeeding && (
-                <button
-                  type="button"
-                  aria-label="Tutup modal"
-                  title="Tutup"
-                  onClick={() => setShowModal(false)}
-                  className="absolute top-5 right-5 w-10 h-10 rounded-2xl bg-gray-100 flex items-center justify-center text-gray-400 hover:bg-gray-200 transition-colors"
-                >
-                  <X className="w-5 h-5" />
-                </button>
-              )}
-
-              {/* Header */}
-              <div className="flex items-center gap-4 mb-6">
-                <div className="w-14 h-14 bg-amber-50 rounded-3xl flex items-center justify-center shrink-0">
-                  <Utensils className="w-6 h-6 text-amber-500" />
-                </div>
-                <div>
-                  <h3 className="text-2xl font-black text-gray-900">Beri Makan Manual</h3>
-                  <p className="text-sm text-gray-400">Kirim porsi ke perangkat sekarang</p>
-                </div>
-              </div>
-
-              {/* Daily progress info */}
-              {dailyTarget > 0 && (
-                <div className="mb-5 p-4 bg-gray-50 rounded-2xl">
-                  <div className="flex justify-between text-sm font-semibold text-gray-600 mb-2">
-                    <span>Sudah diberikan hari ini</span>
-                    <span className="font-black">{todayTotal}g / {dailyTarget}g</span>
-                  </div>
-                  <div className="w-full h-2.5 bg-gray-200 rounded-full overflow-hidden">
-                    <motion.div
-                      initial={{ width: 0 }}
-                      animate={{ width: `${progressPct}%` }}
-                      transition={{ duration: 0.8 }}
-                      className={`h-full rounded-full ${progressPct >= 100 ? 'bg-red-400' : 'bg-amber-400'}`}
-                    />
-                  </div>
-                  <p className="text-xs text-gray-400 mt-1.5">
-                    Sisa kapasitas: <span className="font-bold text-gray-600">{remainingToday === Infinity ? '—' : `${remainingToday}g`}</span>
-                  </p>
-                </div>
-              )}
-
-              {/* Slider */}
-              <div className="mb-5">
-                <div className="flex justify-between items-center mb-3">
-                  <label className="text-sm font-black text-gray-400 uppercase tracking-widest">
-                    Ukuran Porsi
-                  </label>
-                  <span className="text-3xl font-black text-amber-500">
-                    {feedingAmount}<span className="text-lg ml-0.5">g</span>
-                  </span>
-                </div>
-                <input
-                  aria-label="Ukuran Porsi"
-                  type="range"
-                  min="5"
-                  max="200"
-                  step="5"
-                  value={feedingAmount}
-                  onChange={(e) => setFeedingAmount(parseInt(e.target.value, 10))}
-                  className="w-full accent-amber-500"
-                />
-                <div className="flex justify-between text-xs text-gray-400 mt-1">
-                  <span>5g</span>
-                  <span>200g</span>
-                </div>
-              </div>
-
-              {/* Alerts */}
-              {isAtLimit && (
-                <div className="flex items-start gap-3 p-4 bg-red-50 border border-red-100 rounded-2xl mb-5">
-                  <AlertTriangle className="w-5 h-5 text-red-400 shrink-0 mt-0.5" />
-                  <div>
-                    <p className="text-sm font-black text-red-700">Batas harian tercapai!</p>
-                    <p className="text-xs text-red-600 mt-0.5">
-                      Kucing sudah mendapat {todayTotal}g dari {dailyTarget}g. Pemberian tambahan berisiko overfeeding.
-                    </p>
-                  </div>
-                </div>
-              )}
-              {!isAtLimit && wouldExceed && (
-                <div className="flex items-start gap-3 p-4 bg-orange-50 border border-orange-100 rounded-2xl mb-5">
-                  <AlertTriangle className="w-5 h-5 text-orange-400 shrink-0 mt-0.5" />
-                  <div>
-                    <p className="text-sm font-black text-orange-700">Porsi melebihi sisa kapasitas!</p>
-                    <p className="text-xs text-orange-600 mt-0.5">
-                      {feedingAmount}g akan membuat total hari ini menjadi {todayTotal + feedingAmount}g (melebihi {dailyTarget}g).
-                    </p>
-                  </div>
-                </div>
-              )}
-
-              {/* Result feedback */}
-              {feedResult && (
-                <div className={cn(
-                  'flex items-center gap-3 px-4 py-3 rounded-2xl text-sm font-semibold mb-4',
-                  feedResult === 'success' ? 'bg-green-50 text-green-700' : 'bg-red-50 text-red-700'
-                )}>
-                  {feedResult === 'success'
-                    ? <CheckCircle2 className="w-5 h-5 shrink-0" />
-                    : <XCircle className="w-5 h-5 shrink-0" />}
-                  {feedResult === 'success'
-                    ? 'Berhasil dikirim ke perangkat!'
-                    : 'Gagal mengirim. Periksa koneksi perangkat.'}
-                </div>
-              )}
-
-              {/* Actions */}
-              <div className="flex gap-3">
-                <button
-                  type="button"
-                  onClick={() => setShowModal(false)}
-                  disabled={isFeeding}
-                  className="flex-1 py-4 rounded-2xl border border-gray-200 font-bold text-gray-600 hover:bg-gray-50 transition-colors disabled:opacity-40"
-                >
-                  Batal
-                </button>
-                <button
-                  type="button"
-                  onClick={handleManualFeed}
-                  disabled={isFeeding || isAtLimit}
-                  className={cn(
-                    'flex-1 py-4 rounded-2xl font-black text-lg flex items-center justify-center gap-2 transition-all',
-                    isFeeding || isAtLimit
-                      ? 'bg-gray-100 text-gray-400 cursor-not-allowed'
-                      : wouldExceed
-                      ? 'bg-orange-400 hover:bg-orange-500 text-white shadow-lg shadow-orange-100'
-                      : 'bg-amber-400 hover:bg-amber-500 text-white shadow-lg shadow-amber-100'
-                  )}
-                >
-                  {isFeeding ? (
-                    <><Loader2 className="w-5 h-5 animate-spin" /> Mengirim...</>
-                  ) : (
-                    <><Utensils className="w-5 h-5" /> {wouldExceed ? 'Kirim Tetap' : 'Kirim Sekarang'}</>
-                  )}
-                </button>
-              </div>
-              {wouldExceed && !isAtLimit && !isFeeding && (
-                <p className="text-xs text-center text-orange-500 font-semibold mt-2">
-                  Tekan "Kirim Tetap" untuk konfirmasi meski melebihi batas.
-                </p>
-              )}
-            </motion.div>
-          </motion.div>
-        )}
-      </AnimatePresence>
     </div>
   );
 }

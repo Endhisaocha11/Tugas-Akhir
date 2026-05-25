@@ -122,7 +122,7 @@ export function MonitoringSelection() {
       <div className="sticky top-0 z-10 bg-white/80 backdrop-blur-md border-b border-amber-100 px-6 py-4 flex items-center justify-between">
         <div className="flex items-center gap-2">
           <span className="text-xl">🐾</span>
-          <span className="font-black text-amber-900 tracking-tight">FelineGuard</span>
+          <span className="font-black text-amber-900 tracking-tight">PawfectCare</span>
         </div>
         <div className="flex items-center gap-2 px-3 py-1.5 bg-amber-50 border border-amber-100 rounded-full">
           <div className="w-2 h-2 rounded-full bg-green-400" />
@@ -143,7 +143,7 @@ export function MonitoringSelection() {
             Selamat Datang!
           </h1>
           <p className="text-gray-400 text-lg max-w-xl mx-auto leading-relaxed">
-            Pilih opsi di bawah untuk mulai menggunakan FelineGuard.
+            Pilih opsi di bawah untuk mulai menggunakan PawfectCare.
           </p>
         </div>
 
@@ -300,7 +300,7 @@ export function MonitoringSelection() {
           <span className="text-lg shrink-0">💡</span>
           <p className="text-sm text-gray-500 leading-relaxed">
             Akun Anda terdaftar sebagai <span className="font-black text-amber-700">User</span>.
-            Untuk akses penuh ke perangkat Smart Cat Feeder,{' '}
+            Untuk akses penuh ke perangkat PawfectCare,{' '}
             <span className="font-black">silakan hubungi Super Admin.</span>
           </p>
         </div>

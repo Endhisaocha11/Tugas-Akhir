@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, useRef } from 'react';
 import { motion } from 'motion/react';
 import {
   Utensils, Clock, AlertTriangle, Play, Settings2,
@@ -11,7 +11,7 @@ import { db } from '../../lib/firebase';
 import { useAuth } from '../../lib/AuthContext';
 import { useCatData } from '../../lib/useCatData';
 import { cn } from '../../lib/utils';
-import type { FeedingScheduleSlot, DeviceStatus, DailyAdjustment } from '../../types';
+import type { FeedingScheduleSlot, DeviceStatus } from '../../types';
 
 // ── Color Utilities ───────────────────────────────────────────────────────────
 
@@ -310,14 +310,44 @@ export function FeedingControl() {
   const wouldExceed = dailyTarget > 0 && (todayTotal + feedingAmount) > dailyTarget;
   const progressPct = dailyTarget > 0 ? Math.min(Math.round((todayTotal / dailyTarget) * 100), 100) : 0;
 
-  const futureScheduleTotal = schedule
-    .filter((s) => s.active !== false && s.time > currentTimeStr)
-    .reduce((sum, s) => sum + s.amount, 0);
+  // Adjustment based on actual logged feedings — used for Firestore sync (ESP32 reads this)
+  const syncAdjustedSlots = useMemo(() => {
+    if (!dailyTarget) return null;
+    const futureSlots = schedule.filter((s) => s.active !== false && s.time > currentTimeStr);
+    if (futureSlots.length === 0) return null;
+    const futureTotal = futureSlots.reduce((sum, s) => sum + s.amount, 0);
+    const remaining = dailyTarget - todayTotal;
+    if (remaining >= futureTotal) return null;
+    const factor = Math.max(0, remaining) / futureTotal;
+    return futureSlots.map((s) => ({
+      time: s.time,
+      originalAmount: s.amount,
+      adjustedAmount: Math.max(0, Math.round(s.amount * factor)),
+    }));
+  }, [dailyTarget, todayTotal, schedule, currentTimeStr]);
+
+  // Preview adjustment including pending slider amount — used for schedule display
+  // Updates live as user moves the slider so they can see the impact before confirming
+  const liveAdjustedSlots = useMemo(() => {
+    if (!dailyTarget) return null;
+    const futureSlots = schedule.filter((s) => s.active !== false && s.time > currentTimeStr);
+    if (futureSlots.length === 0) return null;
+    const futureTotal = futureSlots.reduce((sum, s) => sum + s.amount, 0);
+    const remaining = dailyTarget - todayTotal - feedingAmount;
+    if (remaining >= futureTotal) return null;
+    const factor = Math.max(0, remaining) / futureTotal;
+    return futureSlots.map((s) => ({
+      time: s.time,
+      originalAmount: s.amount,
+      adjustedAmount: Math.max(0, Math.round(s.amount * factor)),
+    }));
+  }, [dailyTarget, todayTotal, feedingAmount, schedule, currentTimeStr]);
+
+  const futureScheduleTotal = syncAdjustedSlots
+    ? syncAdjustedSlots.reduce((sum, s) => sum + s.adjustedAmount, 0)
+    : schedule.filter((s) => s.active !== false && s.time > currentTimeStr).reduce((sum, s) => sum + s.amount, 0);
   const projectedTotal = todayTotal + futureScheduleTotal;
   const willExceedWithSchedule = dailyTarget > 0 && projectedTotal > dailyTarget;
-
-  // Today's active smart adjustments
-  const todayAdjustments = cat?.dailyAdjustments?.date === todayStr ? cat.dailyAdjustments : null;
 
   // Selected device object
   const selectedDevice = devices.find((d) => d.id === selectedDeviceId) ?? devices[0] ?? null;
@@ -348,13 +378,13 @@ export function FeedingControl() {
   useEffect(() => {
     if (!isActuallyOverLimit || !cat || isAtDailyLimit) return;
     if (cat.dailyLimitResetDate === todayStr) return;
-    updateDoc(doc(db, 'cats', `${targetOwnerId}_main`), {
+    updateDoc(doc(db, 'cats', cat.id), {
       dailyLimitReachedDate: todayStr,
     }).catch(console.error);
-  }, [isActuallyOverLimit, isAtDailyLimit, cat, targetOwnerId, todayStr]);
+  }, [isActuallyOverLimit, isAtDailyLimit, cat, todayStr]);
 
   // ── Firestore helpers ────────────────────────────────────────────────────
-  const catDocRef = () => doc(db, 'cats', `${targetOwnerId}_main`);
+  const catDocRef = () => doc(db, 'cats', cat!.id);
 
   const persistSchedule = async (updated: FeedingScheduleSlot[]) => {
     setSavingSchedule(true);
@@ -367,27 +397,22 @@ export function FeedingControl() {
     }
   };
 
-  // ── Smart adjustment calculator ───────────────────────────────────────────
-  const computeSmartAdjustment = (manualAmount: number): DailyAdjustment | null => {
-    if (!dailyTarget) return null;
-    const futureSlots = schedule.filter((s) => s.active !== false && s.time > currentTimeStr);
-    if (futureSlots.length === 0) return null;
+  // Ref to prevent redundant Firestore writes when todayTotal hasn't changed
+  const lastSyncedTotalRef = useRef<number>(-1);
 
-    const remaining = dailyTarget - todayTotal - manualAmount;
-    const originalFutureTotal = futureSlots.reduce((sum, s) => sum + s.amount, 0);
-    if (originalFutureTotal === 0 || remaining >= originalFutureTotal) return null;
-
-    const factor = Math.max(0, remaining) / originalFutureTotal;
-    return {
-      date: todayStr,
-      manualTotal: todayTotal + manualAmount,
-      slots: futureSlots.map((s) => ({
-        time: s.time,
-        originalAmount: s.amount,
-        adjustedAmount: Math.max(0, Math.round(s.amount * factor)),
-      })),
-    };
-  };
+  // Sync confirmed feedings adjustment to Firestore so ESP32 reads updated slot amounts.
+  // Fires whenever any feeding is logged (manual OR automatic from ESP32).
+  useEffect(() => {
+    if (!targetOwnerId || todayTotal === lastSyncedTotalRef.current) return;
+    lastSyncedTotalRef.current = todayTotal;
+    const adjustment = syncAdjustedSlots
+      ? { date: todayStr, manualTotal: todayTotal, slots: syncAdjustedSlots }
+      : null;
+    if (!cat?.id) return;
+    updateDoc(doc(db, 'cats', cat.id), {
+      dailyAdjustments: adjustment,
+    }).catch(console.error);
+  }, [todayTotal, cat, syncAdjustedSlots, todayStr]);
 
   // ── Smart Feed Toggle ─────────────────────────────────────────────────────
   const handleToggleSmartFeed = async () => {
@@ -449,8 +474,8 @@ export function FeedingControl() {
       const logId = `${targetOwnerId}_${Date.now()}`;
       await setDoc(doc(db, 'feedingLogs', logId), {
         id: logId,
-        catId: `${targetOwnerId}_main`,
-        deviceId: selectedDevice?.id ?? `${targetOwnerId}_device`,
+        catId: cat?.id ?? '',
+        deviceId: selectedDevice?.id ?? '',
         timestamp: Date.now(),
         amountRequested: feedingAmount,
         amountDispensed: feedingAmount,
@@ -458,21 +483,9 @@ export function FeedingControl() {
         notes: 'manual',
       });
 
-      // Calculate and persist smart adjustment
-      const adjustment = computeSmartAdjustment(feedingAmount);
-      const updates: Record<string, string | DailyAdjustment> = {};
-
-      if (adjustment) {
-        updates.dailyAdjustments = adjustment;
-      }
-
-      // Persist daily limit flag
+      // Persist daily limit flag if reached
       if (dailyTarget > 0 && (todayTotal + feedingAmount) >= dailyTarget) {
-        updates.dailyLimitReachedDate = todayStr;
-      }
-
-      if (Object.keys(updates).length > 0) {
-        await updateDoc(catDocRef(), updates);
+        await updateDoc(catDocRef(), { dailyLimitReachedDate: todayStr });
       }
 
       setFeedResult('success');
@@ -540,8 +553,8 @@ export function FeedingControl() {
 
   const primaryDevice = devices[0];
   const secondaryDevice = devices[1];
-  const device1Id = primaryDevice?.id ?? `${targetOwnerId}_device`;
-  const device2Id = secondaryDevice?.id ?? `${targetOwnerId}_device2`;
+  const device1Id = primaryDevice?.id ?? '';
+  const device2Id = secondaryDevice?.id ?? '';
 
   return (
     <div className="flex-1 flex flex-col gap-8 w-full px-8 py-6">
@@ -550,7 +563,7 @@ export function FeedingControl() {
       <div>
         <h2 className="text-5xl font-black text-gray-900">Feeding Control</h2>
         <p className="text-gray-400 mt-2 text-lg">
-          Kontrol pemberian makan langsung ke Smart Cat Feeder.
+          Kontrol pemberian makan langsung ke PawfectCare.
         </p>
       </div>
 
@@ -659,15 +672,15 @@ export function FeedingControl() {
             </div>
             <div className="p-4 bg-blue-50 border border-blue-100 rounded-2xl space-y-1">
               <p className="text-xs text-blue-700 font-semibold">
-                Firestore path ESP32 pertama (ESP1):<br />
-                <code className="font-black">devices/{targetOwnerId}_device</code>
-              </p>
-              <p className="text-xs text-blue-700 font-semibold">
-                Firestore path ESP32 kedua (ESP2):<br />
-                <code className="font-black">devices/{targetOwnerId}_device2</code>
+                Realtime Database path ESP32:<br />
+                <code className="font-black">devices/&lt;DEVICE_ID&gt;/</code>
               </p>
               <p className="text-xs text-blue-500 mt-2">
-                Tambahkan field <code>deviceNumber: 1</code> atau <code>deviceNumber: 2</code> pada dokumen.
+                ESP32 menulis ke Realtime Database (bukan Firestore). Field yang dibutuhkan:
+                <code> isOnline</code>, <code>foodStock</code>, <code>weight</code>, <code>time</code>, <code>servoStatus</code>.
+              </p>
+              <p className="text-xs text-blue-500 mt-1">
+                Setelah ESP32 terhubung, klaim perangkat di halaman <strong>Pengaturan → Klaim Perangkat</strong>.
               </p>
             </div>
           </div>
@@ -983,14 +996,18 @@ export function FeedingControl() {
           {dailyTarget > 0 && <DailyTargetAlert />}
 
           {/* Smart adjustment active notice */}
-          {todayAdjustments && todayAdjustments.slots.length > 0 && (
+          {liveAdjustedSlots && liveAdjustedSlots.length > 0 && (
             <div className="flex items-start gap-2.5 p-3 rounded-xl border text-xs bg-indigo-50 border-indigo-100">
               <Zap className="w-3.5 h-3.5 shrink-0 mt-0.5 text-indigo-400" />
               <div className="text-indigo-700">
-                <p className="font-black">Smart Adjustment Aktif</p>
+                <p className="font-black">
+                  {syncAdjustedSlots ? 'Smart Adjustment Aktif' : `Preview: jika memberi ${feedingAmount}g sekarang`}
+                </p>
                 <p className="mt-0.5">
-                  Jadwal disesuaikan karena pemberian manual hari ini ({todayAdjustments.manualTotal}g).
-                  Porsi yang ditulis <span className="line-through">dicoret</span> = porsi asli.
+                  {syncAdjustedSlots
+                    ? `Sudah diberikan ${todayTotal}g — setelah tambah ${feedingAmount}g = ${todayTotal + feedingAmount}g dari target ${dailyTarget}g.`
+                    : `Total jadi ${todayTotal + feedingAmount}g dari target ${dailyTarget}g.`}
+                  {' '}Porsi yang ditulis <span className="line-through">dicoret</span> = porsi asli.
                 </p>
               </div>
             </div>
@@ -1019,9 +1036,9 @@ export function FeedingControl() {
           {/* Slot list */}
           <div className="flex-1 overflow-y-auto space-y-4 min-h-0">
             {schedule.map((slot, index) => {
-              const adjSlot = todayAdjustments?.slots.find((a) => a.time === slot.time);
+              const adjSlot = liveAdjustedSlots?.find((a) => a.time === slot.time);
               const displayAmount = adjSlot?.adjustedAmount ?? slot.amount;
-              const wasAdjusted = adjSlot !== undefined && adjSlot.adjustedAmount !== adjSlot.originalAmount;
+              const wasAdjusted = adjSlot !== undefined && adjSlot.adjustedAmount !== slot.amount;
 
               return editingIndex === index ? (
                 <div

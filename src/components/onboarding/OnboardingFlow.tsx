@@ -1,5 +1,5 @@
 import React, { useState, useRef, ChangeEvent } from "react";
-import { doc, getDoc, setDoc } from "firebase/firestore";
+import { doc, getDoc, setDoc, updateDoc } from "firebase/firestore";
 import { db } from "../../lib/firebase";
 import { useAuth } from "../../lib/AuthContext";
 
@@ -116,7 +116,7 @@ function generateCSV(data: any): string {
     [],
     ["NOTES"],
     ["Generated at", new Date().toISOString()],
-    ["Ingin mencoba alat Smart Cat Feeder? Hubungi admin untuk akses device."],
+    ["Ingin mencoba alat PawfectCare? Hubungi admin untuk akses device."],
   ];
 
   return lines.map(line => line.map(cell => `"${cell}"`).join(',')).join('\n');
@@ -253,7 +253,7 @@ interface OnboardingFlowProps {
 export default function OnboardingFlow({
   isAdmin = false,
 }: OnboardingFlowProps) {
-  const { user } = useAuth();
+  const { user, profile } = useAuth();
   const [step, setStep] = useState<number>(1);
   const [loading, setLoading] = useState<boolean>(false);
   const [csvDownloaded, setCsvDownloaded] = useState<boolean>(false);
@@ -445,20 +445,26 @@ export default function OnboardingFlow({
         updatedAt: new Date().toISOString(),
       });
 
-      const onboardingData = {
-        ...form,
-        result: {
-          dailyCalorieTarget: targets.dailyCalorieTarget,
-          dailyGramTarget: targets.dailyGramTarget,
-          Fm: targets.Fm, Fg: targets.Fg, Fo: targets.Fo, Fa: targets.Fa,
-        },
-        updatedAt: new Date().toISOString(),
-      };
-      localStorage.setItem('catProfile', JSON.stringify(onboardingData));
-      localStorage.setItem('appMode', 'monitor');
+      // ── 4. Tandai onboarding selesai di user profile ──────────────────────────
+      await updateDoc(doc(db, 'users', user.uid), {
+        onboardingCompleted: true,
+      });
+
+      // ── 5. Link cat ke device (jika admin sudah klaim device) ────────────────
+      const claimedDeviceId = profile?.claimedDeviceId;
+      if (claimedDeviceId) {
+        await updateDoc(doc(db, 'devices', claimedDeviceId), {
+          linkedCatId: catId,
+        });
+      }
 
       setLoading(false);
-      // Jika foto gagal tapi data berhasil, tunda redirect sebentar agar user bisa baca warning
+
+      // tutup modal setelah sukses
+      setShowConfirmModal(false);
+
+      // AuthContext onSnapshot akan detect onboardingCompleted: true
+      // dan routing App.tsx otomatis masuk Dashboard
       setTimeout(() => window.location.reload(), didPhotoFail ? 2500 : 800);
     } catch (err) {
       console.error('Gagal menyimpan ke Firestore:', err);
@@ -518,7 +524,7 @@ export default function OnboardingFlow({
           <div className="flex items-center gap-2">
             <span className="text-lg">🐾</span>
             <span className="font-black text-amber-900 text-sm tracking-tight">
-              SmartCatFeeder
+              PawfectCare
             </span>
           </div>
 
@@ -639,34 +645,7 @@ export default function OnboardingFlow({
                   <p className="text-sm text-center text-amber-700 mt-2 leading-relaxed max-w-[220px]">
                     Tambahkan foto agar profil kucing lebih personal dan menarik.
                   </p>
-
-                  <div className="mt-8 w-full bg-white rounded-2xl p-4 border border-amber-100">
-                    <div className="flex items-center justify-between">
-                      <span className="text-sm font-bold text-gray-500">
-                        Kondisi Terdeteksi
-                      </span>
-
-                      <span className="px-3 py-1 rounded-full bg-amber-100 text-amber-800 text-xs font-black">
-                        {getBodyLabel(form.bodyCondition)}
-                      </span>
-                    </div>
-
-                    <div className="mt-4">
-                      <div className="flex justify-between text-sm">
-                        <span className="text-gray-400">Berat</span>
-                        <span className="font-black text-amber-900">
-                          {form.weight} KG
-                        </span>
-                      </div>
-
-                      <div className="flex justify-between text-sm mt-2">
-                        <span className="text-gray-400">Usia</span>
-                        <span className="font-black text-amber-900">
-                          {form.age} Tahun
-                        </span>
-                      </div>
-                    </div>
-                  </div>
+ 
                 </div>
 
                 {/* RIGHT SIDE */}
@@ -678,7 +657,7 @@ export default function OnboardingFlow({
                     </p>
 
                     <h1 className="text-3xl lg:text-5xl font-black text-amber-950 leading-tight mt-3">
-                      Halo, Siapa Nama Kucing Anda?
+                      Halo, Siapa Nama Kucingmu?
                     </h1>
 
                     <p className="text-gray-400 text-lg mt-4 leading-relaxed max-w-2xl">
@@ -772,7 +751,7 @@ export default function OnboardingFlow({
                     </p>
 
                     <h1 className="text-3xl lg:text-5xl font-black text-amber-950 mt-3 leading-tight">
-                      Seberapa Besar Teman Bulu Anda?
+                      Seberapa Besar Teman Bulumu?
                     </h1>
 
                     <p className="text-gray-400 text-base lg:text-lg mt-4 leading-relaxed max-w-3xl">
@@ -1407,7 +1386,7 @@ export default function OnboardingFlow({
                       </p>
                       <p className="text-blue-700 mt-2 leading-relaxed">
                         File CSV berhasil tersimpan di perangkat Anda.{" "}
-                        Jika ingin mencoba alat Smart Cat Feeder secara langsung,{" "}
+                        Jika ingin mencoba alat PawfectCare secara langsung,{" "}
                         <span className="font-black">silakan hubungi admin.</span>
                       </p>
                       <button
@@ -1470,28 +1449,13 @@ export default function OnboardingFlow({
                   ? "💾 Simpan ke Database"
                   : "Lanjutkan →"}
               </button>
-               <button
-                onClick={() => setStep(1)}
-                className="
-                  px-6
-                  py-3
-                  rounded-2xl
-                  border
-                  border-gray-200
-                  text-gray-500
-                  font-bold
-                  hover:border-amber-300
-                "
-              >
-                Edit Data
-              </button>
             </div>
 
             <div className="flex items-center justify-center gap-5 mt-3 pt-3 border-t border-amber-50">
               <div className="flex items-center gap-1.5">
                 <div className="w-1.5 h-1.5 rounded-full bg-green-400" />
                 <span className="text-[10px] text-gray-400">
-                  {step === 4 ? "Feeder: Online" : "Smart Feeder Terhubung: V3-ModelX"}
+                  {step === 4 ? "Feeder: Online" : "PawfectCare Terhubung: V3-ModelX"}
                 </span>
               </div>
               {step === 4 && (

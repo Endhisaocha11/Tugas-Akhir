@@ -5,7 +5,6 @@ import {
   Utensils,
   Cat,
   History,
-  BarChart3,
   BookOpen,
   Settings,
   LogOut,
@@ -18,6 +17,7 @@ import {
 import { motion } from 'framer-motion';
 
 import { useAuth } from '../../lib/AuthContext';
+import { useCatData } from '../../lib/useCatData';
 import { auth } from '../../lib/firebase';
 import { UserRole } from '../../types';
 import { cn } from '../../lib/utils';
@@ -61,11 +61,6 @@ const sidebarItems: SidebarItem[] = [
     icon: History,
   },
   {
-    id: 'analytics',
-    label: 'Analytics',
-    icon: BarChart3,
-  },
-  {
     id: 'education',
     label: 'FLUTD Education',
     icon: BookOpen,
@@ -103,6 +98,8 @@ export function DashboardLayout({
   userRole = UserRole.USER,
 }: DashboardLayoutProps) {
   const { user } = useAuth();
+  const { cat } = useCatData();
+  const catPhotoUrl = (cat as any)?.photoUrl as string | undefined;
 
   // =========================
   // ROLE
@@ -161,7 +158,7 @@ export function DashboardLayout({
             <div className="w-9 h-9 rounded-xl overflow-hidden border-2 border-amber-200">
 
               <img
-                src="https://api.dicebear.com/7.x/thumbs/svg?seed=feeder"
+                src="logo.png"
                 alt="feeder"
                 className="w-full h-full object-cover"
               />
@@ -170,7 +167,7 @@ export function DashboardLayout({
             {/* BRAND INFO */}
             <div>
               <p className="text-sm font-bold text-gray-800 leading-none">
-                Smart Feeder
+                PawfectCare
               </p>
 
               <p className="text-[10px] text-green-500 font-medium mt-0.5 flex items-center gap-1">
@@ -253,7 +250,7 @@ export function DashboardLayout({
 
           {/* PAGE TITLE */}
           <h1 className="text-base font-bold text-gray-800">
-            Smart Cat Feeder
+            PawfectCare
           </h1>
 
           {/* RIGHT ACTIONS */}
@@ -326,7 +323,7 @@ export function DashboardLayout({
               )}
             >
               <img
-                src={`https://api.dicebear.com/7.x/avataaars/svg?seed=${user?.uid}`}
+                src={catPhotoUrl || `https://api.dicebear.com/7.x/bottts/svg?seed=${cat?.name ?? user?.uid}`}
                 alt="avatar"
                 className="w-full h-full object-cover"
               />
@@ -351,7 +348,7 @@ export function DashboardLayout({
         {/* FOOTER */}
         <footer className="py-3 px-6 border-t border-gray-100 bg-white">
           <p className="text-xs text-gray-400 text-center">
-            © {new Date().getFullYear()} Smart Cat Feeder Tugas Akhir Endhisa Ocha Jauhary — All rights reserved.
+            © {new Date().getFullYear()} PawfectCare Tugas Akhir Endhisa Ocha Jauhary — All rights reserved.
           </p>
         </footer>
       </main>

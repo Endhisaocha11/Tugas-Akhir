@@ -1,12 +1,15 @@
-import { useMemo, useState } from 'react';
+import { useMemo, useRef, useState } from 'react';
 import { motion } from 'motion/react';
 import {
   Scale, Heart, Activity, ShieldCheck, Calculator, Utensils,
-  ChevronRight, AlertTriangle, CheckCircle2, ChevronDown,
+  ChevronRight, AlertTriangle, CheckCircle2, ChevronDown, Camera, Loader2, Search,
 } from 'lucide-react';
+import { doc, updateDoc } from 'firebase/firestore';
+import { db } from '../../lib/firebase';
 import { useCatData } from '../../lib/useCatData';
+import { useAuth } from '../../lib/AuthContext';
 import { cn } from '../../lib/utils';
-import { CatProfileSnapshot, FeedingLog } from '../../types';
+import { CatProfileSnapshot, FeedingLog, UserRole } from '../../types';
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -253,7 +256,62 @@ function ProfileHistoryCard({
 // ── Main Page ─────────────────────────────────────────────────────────────────
 
 export function CatProfilePage() {
+  const { profile } = useAuth();
+  const isAdmin = profile?.role === UserRole.SUPER_ADMIN;
   const { cat, feedingLogs, profileHistory, loading } = useCatData();
+
+  const [uploading, setUploading] = useState(false);
+  const [uploadError, setUploadError] = useState<string | null>(null);
+  const [searchQuery, setSearchQuery] = useState('');
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const handlePhotoChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    if (!file.type.startsWith('image/')) {
+      setUploadError('File harus berupa gambar.');
+      return;
+    }
+    if (file.size > 10 * 1024 * 1024) {
+      setUploadError('Ukuran file maksimal 10MB.');
+      return;
+    }
+    setUploading(true);
+    setUploadError(null);
+    try {
+      // Compress + resize to max 400x400px using Canvas, store as base64 in Firestore
+      const base64 = await compressImage(file, 400, 0.75);
+      if (!cat) return;
+      await updateDoc(doc(db, 'cats', cat.id), { photoUrl: base64 });
+    } catch {
+      setUploadError('Gagal menyimpan foto. Coba lagi.');
+    } finally {
+      setUploading(false);
+      if (fileInputRef.current) fileInputRef.current.value = '';
+    }
+  };
+
+  function compressImage(file: File, maxSize: number, quality: number): Promise<string> {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = (ev) => {
+        const img = new Image();
+        img.onload = () => {
+          const scale = Math.min(1, maxSize / Math.max(img.width, img.height));
+          const canvas = document.createElement('canvas');
+          canvas.width = Math.round(img.width * scale);
+          canvas.height = Math.round(img.height * scale);
+          const ctx = canvas.getContext('2d')!;
+          ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+          resolve(canvas.toDataURL('image/jpeg', quality));
+        };
+        img.onerror = reject;
+        img.src = ev.target!.result as string;
+      };
+      reader.onerror = reject;
+      reader.readAsDataURL(file);
+    });
+  }
 
   if (loading) {
     return (
@@ -299,7 +357,7 @@ export function CatProfilePage() {
   // Build full profile timeline: history (old→new) + current
   const currentSnapshot: CatProfileSnapshot = {
     id: 'current',
-    catId: `${cat.ownerId}_main`,
+    catId: cat.id,
     ownerId: cat.ownerId,
     savedAt: cat.profileUpdatedAt ?? todayStartMs,
     endedAt: undefined,
@@ -321,6 +379,14 @@ export function CatProfilePage() {
     currentSnapshot,
   ];
 
+  // Untuk display: terbaru di atas, dengan index asli agar nomor urut (#1, #2, …) tetap konsisten
+  const filteredWithIndex = allProfiles
+    .map((snap, idx) => ({ snap, idx }))
+    .filter(({ snap }) =>
+      snap.name.toLowerCase().includes(searchQuery.toLowerCase().trim())
+    )
+    .reverse();
+
   return (
     <div className="space-y-10">
 
@@ -328,7 +394,7 @@ export function CatProfilePage() {
       <div className="flex flex-col md:flex-row items-center md:items-start gap-10 p-10 bg-white rounded-[40px] border border-amber-100 shadow-sm relative overflow-hidden">
         <div className="absolute top-0 right-0 w-80 h-80 bg-amber-50 rounded-full -mr-40 -mt-40 blur-3xl pointer-events-none" />
 
-        <div className="relative shrink-0">
+        <div className="relative shrink-0 group">
           <div className="w-40 h-40 rounded-[40px] overflow-hidden border-8 border-amber-100 shadow-xl">
             <img
               src={(cat as any).photoUrl || `https://api.dicebear.com/7.x/bottts/svg?seed=${cat.name}`}
@@ -336,6 +402,37 @@ export function CatProfilePage() {
               className="w-full h-full object-cover"
             />
           </div>
+
+          {isAdmin && (
+            <>
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept="image/*"
+                aria-label="Ganti foto profil kucing"
+                title="Ganti foto profil kucing"
+                className="hidden"
+                onChange={handlePhotoChange}
+              />
+              <button
+                type="button"
+                disabled={uploading}
+                onClick={() => fileInputRef.current?.click()}
+                className="absolute inset-0 rounded-4xl bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity flex flex-col items-center justify-center gap-1.5 cursor-pointer"
+              >
+                {uploading
+                  ? <><Loader2 className="w-7 h-7 text-white animate-spin" /><span className="text-white text-xs font-bold">Uploading...</span></>
+                  : <><Camera className="w-7 h-7 text-white" /><span className="text-white text-xs font-bold">Ganti Foto</span></>
+                }
+              </button>
+            </>
+          )}
+
+          {uploadError && (
+            <p className="absolute -bottom-7 left-1/2 -translate-x-1/2 text-xs text-red-500 font-semibold whitespace-nowrap bg-white px-2 py-0.5 rounded-full shadow">
+              {uploadError}
+            </p>
+          )}
         </div>
 
         <div className="flex-1 text-center md:text-left space-y-5">
@@ -534,23 +631,48 @@ export function CatProfilePage() {
 
       {/* ── RIWAYAT PROFIL ── */}
       <div className="space-y-5">
-        <div className="px-1">
-          <h3 className="text-2xl font-black text-gray-900">Riwayat Profil Kucing</h3>
-          <p className="text-sm text-gray-400 mt-0.5">
-            {allProfiles.length} profil tercatat — klik kartu untuk lihat riwayat harian
-          </p>
+
+        {/* Header + Search */}
+        <div className="flex items-center justify-between gap-4 flex-wrap px-1">
+          <div>
+            <h3 className="text-2xl font-black text-gray-900">Riwayat Profil Kucing</h3>
+            <p className="text-sm text-gray-400 mt-0.5">
+              {allProfiles.length} profil tercatat — terbaru ditampilkan di atas
+            </p>
+          </div>
+          <div className="relative">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 pointer-events-none" />
+            <input
+              type="text"
+              placeholder="Cari nama..."
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              className="pl-9 pr-4 py-2.5 rounded-2xl border border-gray-200 bg-white text-sm font-medium outline-none focus:border-amber-400 transition-colors w-48"
+            />
+          </div>
         </div>
 
-        <div className="space-y-4">
-          {allProfiles.map((snap, idx) => (
-            <ProfileHistoryCard
-              key={snap.id}
-              snapshot={snap}
-              index={idx}
-              feedingLogs={feedingLogs}
-              isCurrent={snap.id === 'current'}
-            />
-          ))}
+        {/* Scrollable list — ~3 cards visible, sisanya scroll */}
+        <div className="max-h-175 overflow-y-auto space-y-4 pr-1 scroll-smooth">
+          {filteredWithIndex.length === 0 ? (
+            <div className="flex flex-col items-center justify-center py-12 bg-white rounded-3xl border border-gray-100">
+              <Search className="w-8 h-8 text-gray-300 mb-3" />
+              <p className="text-sm font-bold text-gray-500">Tidak ditemukan</p>
+              <p className="text-xs text-gray-400 mt-1">
+                Tidak ada profil dengan nama &ldquo;{searchQuery}&rdquo;
+              </p>
+            </div>
+          ) : (
+            filteredWithIndex.map(({ snap, idx }) => (
+              <ProfileHistoryCard
+                key={snap.id}
+                snapshot={snap}
+                index={idx}
+                feedingLogs={feedingLogs}
+                isCurrent={snap.id === 'current'}
+              />
+            ))
+          )}
         </div>
       </div>
 

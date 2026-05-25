@@ -41,7 +41,7 @@ export function Education() {
           Knowledge is the best <br />
           <span className="text-primary italic">Health Insurance.</span>
         </h2>
-        <p className="text-gray-400 text-lg">Deep dive into feline health, nutrition metrics, and technical guides for your Smart Feeder.</p>
+        <p className="text-gray-400 text-lg">Deep dive into feline health, nutrition metrics, and technical guides for your PawfectCare.</p>
       </div>
 
       {/* Featured Articles */}

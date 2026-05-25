@@ -98,7 +98,7 @@ export function Notifications() {
         type: 'error',
         source: 'device',
         title: 'Perangkat Offline',
-        body: 'Smart Cat Feeder tidak terhubung ke internet. Periksa koneksi Wi-Fi perangkat Anda.',
+        body: 'PawfectCare tidak terhubung ke internet. Periksa koneksi Wi-Fi perangkat Anda.',
         time: device.lastPulse ? formatTime(device.lastPulse) : '—',
         priority: 0,
       });
@@ -134,7 +134,7 @@ export function Notifications() {
         type: 'success',
         source: 'device',
         title: 'Perangkat Siap Digunakan',
-        body: `Smart Cat Feeder aktif dan siaga. Stok pakan ${device.foodStockLevel}%. Servo dalam kondisi baik.`,
+        body: `PawfectCare aktif dan siaga. Stok pakan ${device.foodStockLevel}%. Servo dalam kondisi baik.`,
         time: device.lastPulse ? formatTime(device.lastPulse) : 'Sekarang',
         priority: 3,
       });
@@ -146,7 +146,7 @@ export function Notifications() {
         type: 'info',
         source: 'device',
         title: 'Perangkat Sedang Aktif',
-        body: 'Smart Cat Feeder sedang mendispens pakan. Berat mangkok saat ini: ' + device.currentWeightOnScale + 'g.',
+        body: 'PawfectCare sedang mendispens pakan. Berat mangkok saat ini: ' + device.currentWeightOnScale + 'g.',
         time: 'Sekarang',
         priority: 2,
       });
@@ -157,7 +157,7 @@ export function Notifications() {
       type: 'info',
       source: 'device',
       title: 'Perangkat Belum Terhubung',
-      body: 'Belum ada data perangkat. Admin perlu menghubungkan Smart Cat Feeder ke sistem terlebih dahulu.',
+      body: 'Belum ada data perangkat. Admin perlu menghubungkan PawfectCare ke sistem terlebih dahulu.',
       time: 'Sekarang',
       priority: 2,
     });
@@ -199,21 +199,18 @@ export function Notifications() {
       });
     }
 
-    // Profile updated notification
-    const updatedAt = (cat as any).updatedAt as string | undefined;
-    if (updatedAt) {
-      const updatedMs = new Date(updatedAt).getTime();
-      if (Date.now() - updatedMs < 86_400_000) {
-        notifs.push({
-          id: 'profile-updated',
-          type: 'info',
-          source: 'profile',
-          title: 'Profil Kucing Diperbarui',
-          body: `Data profil ${cat.name} baru saja diperbarui melalui Onboarding Flow. Target feeding diperbarui: ${cat.dailyGramTarget}g/hari.`,
-          time: formatTime(updatedMs),
-          priority: 2,
-        });
-      }
+    // Profile updated notification — gunakan profileUpdatedAt (number) yang lebih reliable
+    const profileUpdatedAt = (cat as any).profileUpdatedAt as number | undefined;
+    if (profileUpdatedAt && Date.now() - profileUpdatedAt < 7 * 86_400_000) {
+      notifs.push({
+        id: 'profile-updated',
+        type: 'info',
+        source: 'profile',
+        title: 'Profil Kucing Diperbarui',
+        body: `Profil ${cat.name} diperbarui pada ${new Date(profileUpdatedAt).toLocaleDateString('id-ID', { day: 'numeric', month: 'short', year: 'numeric' })}. Target feeding baru: ${cat.dailyGramTarget}g/hari. Data analitik dashboard otomatis direset — hanya menghitung log sejak profil ini disimpan.`,
+        time: formatTime(profileUpdatedAt),
+        priority: 2,
+      });
     }
   }
 
