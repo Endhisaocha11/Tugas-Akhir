@@ -7,7 +7,8 @@ import {
   History, Cpu, Scale, BanIcon,
 } from 'lucide-react';
 import { doc, updateDoc, setDoc } from 'firebase/firestore';
-import { db } from '../../lib/firebase';
+import { ref, set } from 'firebase/database';
+import { db, rtdb } from '../../lib/firebase';
 import { useAuth } from '../../lib/AuthContext';
 import { useCatData } from '../../lib/useCatData';
 import { cn } from '../../lib/utils';
@@ -468,14 +469,28 @@ export function FeedingControl() {
   // ── Manual Feed ───────────────────────────────────────────────────────────
   const handleManualFeed = async () => {
     if (!user || isFeeding) return;
+    const deviceId = selectedDevice?.id;
+    if (!deviceId) { setFeedResult('error'); return; }
+
     setIsFeeding(true);
     setFeedResult(null);
     try {
+      // 1. Kirim command ke RTDB agar ESP32 buka servo
+      if (rtdb) {
+        await set(ref(rtdb, `devices/${deviceId}/command`), {
+          type: 'feed',
+          amount: feedingAmount,
+          status: 'pending',
+          requestedAt: Date.now(),
+        });
+      }
+
+      // 2. Catat log ke Firestore (untuk riwayat & analitik)
       const logId = `${targetOwnerId}_${Date.now()}`;
       await setDoc(doc(db, 'feedingLogs', logId), {
         id: logId,
         catId: cat?.id ?? '',
-        deviceId: selectedDevice?.id ?? '',
+        deviceId,
         timestamp: Date.now(),
         amountRequested: feedingAmount,
         amountDispensed: feedingAmount,
@@ -483,7 +498,7 @@ export function FeedingControl() {
         notes: 'manual',
       });
 
-      // Persist daily limit flag if reached
+      // 3. Tandai daily limit jika tercapai
       if (dailyTarget > 0 && (todayTotal + feedingAmount) >= dailyTarget) {
         await updateDoc(catDocRef(), { dailyLimitReachedDate: todayStr });
       }
