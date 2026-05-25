@@ -557,12 +557,12 @@ export function FeedingControl() {
   const device2Id = secondaryDevice?.id ?? '';
 
   return (
-    <div className="flex-1 flex flex-col gap-8 w-full px-8 py-6">
+    <div className="flex-1 flex flex-col gap-5 md:gap-8 w-full">
 
       {/* ── HEADER ── */}
       <div>
-        <h2 className="text-5xl font-black text-gray-900">Feeding Control</h2>
-        <p className="text-gray-400 mt-2 text-lg">
+        <h2 className="text-2xl md:text-5xl font-black text-gray-900">Feeding Control</h2>
+        <p className="text-gray-400 mt-1 text-sm md:text-lg">
           Kontrol pemberian makan langsung ke PawfectCare.
         </p>
       </div>
@@ -637,7 +637,7 @@ export function FeedingControl() {
           className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40 backdrop-blur-sm"
           onClick={(e) => { if (e.target === e.currentTarget) setShowDeviceInfo(false); }}
         >
-          <div className="bg-white rounded-4xl p-8 w-full max-w-md shadow-2xl relative">
+          <div className="bg-white rounded-4xl p-5 md:p-8 w-full max-w-md shadow-2xl relative">
             <button
               type="button"
               title="Tutup"
@@ -752,10 +752,10 @@ export function FeedingControl() {
       </div>
 
       {/* ── TWO CARDS ── */}
-      <div className="flex-1 grid grid-cols-1 xl:grid-cols-2 gap-8 min-h-195">
+      <div className="flex-1 grid grid-cols-1 xl:grid-cols-2 gap-5 md:gap-8">
 
         {/* ── MANUAL FEED CARD ── */}
-        <div className="card-premium p-8 rounded-4xl relative overflow-hidden flex flex-col gap-6">
+        <div className="card-premium p-5 md:p-8 rounded-4xl relative overflow-hidden flex flex-col gap-5 md:gap-6">
           <div className="absolute top-0 right-0 w-56 h-56 bg-amber-50 rounded-full -mr-28 -mt-28 pointer-events-none" />
 
           {/* Header */}
@@ -847,8 +847,8 @@ export function FeedingControl() {
               )}
             </div>
 
-            <div className="flex items-center gap-8 bg-gray-50 px-7 py-6 rounded-3xl overflow-hidden">
-              <div className="flex-1 pr-4">
+            <div className="flex items-center gap-4 bg-gray-50 px-4 py-4 md:px-7 md:py-6 rounded-3xl overflow-hidden">
+              <div className="flex-1 pr-2">
                 <input
                   aria-label="Ukuran Porsi"
                   type="range"
@@ -864,8 +864,8 @@ export function FeedingControl() {
                 />
               </div>
               <div className="shrink-0 min-w-30 text-right">
-                <p className="text-5xl font-black text-amber-500 leading-none">
-                  {feedingAmount}<span className="text-2xl ml-1">g</span>
+                <p className="text-3xl md:text-5xl font-black text-amber-500 leading-none">
+                  {feedingAmount}<span className="text-xl md:text-2xl ml-1">g</span>
                 </p>
               </div>
             </div>
@@ -975,7 +975,7 @@ export function FeedingControl() {
         </div>
 
         {/* ── SCHEDULE CARD ── */}
-        <div className="card-premium p-8 rounded-4xl relative flex flex-col gap-5">
+        <div className="card-premium p-5 md:p-8 rounded-4xl relative flex flex-col gap-5">
 
           {/* Header */}
           <div className="flex items-center justify-between shrink-0">
@@ -1208,7 +1208,7 @@ export function FeedingControl() {
         <button
           type="button"
           onClick={() => setShowHistory((v) => !v)}
-          className="w-full flex items-center justify-between px-8 py-6 hover:bg-gray-50 transition-colors"
+          className="w-full flex items-center justify-between px-4 py-4 md:px-8 md:py-6 hover:bg-gray-50 transition-colors"
         >
           <div className="flex items-center gap-4">
             <div className="w-12 h-12 bg-purple-50 rounded-2xl flex items-center justify-center shrink-0">
@@ -1229,7 +1229,7 @@ export function FeedingControl() {
         </button>
 
         {showHistory && (
-          <div className="px-8 pb-6 border-t border-gray-100">
+          <div className="px-4 pb-4 md:px-8 md:pb-6 border-t border-gray-100">
             {usageDays.length === 0 ? (
               <div className="py-10 text-center text-gray-400">
                 <History className="w-10 h-10 mx-auto mb-3 opacity-30" />

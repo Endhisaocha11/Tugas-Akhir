@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import React from 'react';
 
 import {
@@ -12,9 +13,11 @@ import {
   Users,
   Clock,
   Radio,
+  Menu,
+  X,
 } from 'lucide-react';
 
-import { motion } from 'framer-motion';
+import { motion, AnimatePresence } from 'framer-motion';
 
 import { useAuth } from '../../lib/AuthContext';
 import { useCatData } from '../../lib/useCatData';
@@ -29,59 +32,16 @@ interface SidebarItem {
   adminOnly?: boolean;
 }
 
-// =========================
-// SIDEBAR MENU
-// =========================
 const sidebarItems: SidebarItem[] = [
-    {
-      id: 'onboarding-flow',
-      label: 'Onboarding Flow',
-      icon: BookOpen,
-      adminOnly: true,
-    },
-  {
-    id: 'dashboard',
-    label: 'Dashboard',
-    icon: LayoutDashboard,
-  },
-  {
-    id: 'feeding-control',
-    label: 'Feeding Control',
-    icon: Utensils,
-    adminOnly: true,
-  },
-  {
-    id: 'cat-profile',
-    label: 'Cat Profile',
-    icon: Cat,
-  },
-  {
-    id: 'history',
-    label: 'Feeding History',
-    icon: History,
-  },
-  {
-    id: 'education',
-    label: 'FLUTD Education',
-    icon: BookOpen,
-  },
-  {
-    id: 'notifications',
-    label: 'Notifications',
-    icon: Bell,
-  },
-  {
-    id: 'settings',
-    label: 'Settings',
-    icon: Settings,
-    adminOnly: true,
-  },
-  {
-    id: 'user-settings',
-    label: 'User Settings',
-    icon: Users,
-    adminOnly: true,
-  },
+  { id: 'onboarding-flow', label: 'Onboarding Flow', icon: BookOpen, adminOnly: true },
+  { id: 'dashboard',       label: 'Dashboard',        icon: LayoutDashboard },
+  { id: 'feeding-control', label: 'Feeding Control',  icon: Utensils,  adminOnly: true },
+  { id: 'cat-profile',     label: 'Cat Profile',      icon: Cat },
+  { id: 'history',         label: 'Feeding History',  icon: History },
+  { id: 'education',       label: 'FLUTD Education',  icon: BookOpen },
+  { id: 'notifications',   label: 'Notifications',    icon: Bell },
+  { id: 'settings',        label: 'Settings',         icon: Settings,  adminOnly: true },
+  { id: 'user-settings',   label: 'User Settings',    icon: Users,     adminOnly: true },
 ];
 
 interface DashboardLayoutProps {
@@ -101,167 +61,173 @@ export function DashboardLayout({
   const { cat } = useCatData();
   const catPhotoUrl = (cat as any)?.photoUrl as string | undefined;
 
-  // =========================
-  // ROLE
-  // =========================
-  const isAdmin =
-    userRole === UserRole.SUPER_ADMIN;
+  const [sidebarOpen, setSidebarOpen] = useState(false);
 
-  // =========================
-  // FILTER MENU
-  // =========================
-  const filteredItems =
-    sidebarItems.filter((item) => {
-      if (
-        item.adminOnly &&
-        !isAdmin
-      ) {
-        return false;
-      }
+  const isAdmin = userRole === UserRole.SUPER_ADMIN;
 
-      return true;
-    });
+  const filteredItems = sidebarItems.filter((item) => {
+    if (item.adminOnly && !isAdmin) return false;
+    return true;
+  });
 
-  // =========================
-  // LOGOUT
-  // =========================
-  const handleLogout =
-    async () => {
-      try {
-        localStorage.removeItem('appMode');
-        localStorage.removeItem('selectedAdminId');
-        localStorage.removeItem('selectedAdminEmail');
-        localStorage.removeItem('catProfile');
-        await auth.signOut();
-      } catch (error) {
-        console.error(
-          'Logout gagal:',
-          error
-        );
-      }
-    };
+  const handleTabChange = (id: string) => {
+    onTabChange(id);
+    setSidebarOpen(false);
+  };
+
+  const handleLogout = async () => {
+    try {
+      localStorage.removeItem('appMode');
+      localStorage.removeItem('selectedAdminId');
+      localStorage.removeItem('selectedAdminEmail');
+      localStorage.removeItem('catProfile');
+      await auth.signOut();
+    } catch (error) {
+      console.error('Logout gagal:', error);
+    }
+  };
+
+  const SidebarContent = () => (
+    <>
+      {/* BRAND */}
+      <div className="px-5 py-4 border-b border-gray-50 flex items-center justify-between shrink-0">
+        <div className="flex items-center gap-2.5">
+          <div className="w-9 h-9 rounded-xl overflow-hidden border-2 border-amber-200 shrink-0">
+            <img src="logo.png" alt="feeder" className="w-full h-full object-cover" />
+          </div>
+          <div>
+            <p className="text-sm font-bold text-gray-800 leading-none">PawfectCare</p>
+            <p className="text-[10px] text-green-500 font-medium mt-0.5 flex items-center gap-1">
+              <span className="w-1.5 h-1.5 bg-green-400 rounded-full inline-block animate-pulse" />
+              Status: Online
+            </p>
+          </div>
+        </div>
+        {/* Close button — mobile only */}
+        <button
+          type="button"
+          onClick={() => setSidebarOpen(false)}
+          className="md:hidden w-8 h-8 flex items-center justify-center rounded-lg text-gray-400 hover:bg-gray-100 transition-colors"
+          aria-label="Tutup menu"
+        >
+          <X className="w-4 h-4" />
+        </button>
+      </div>
+
+      {/* NAVIGATION */}
+      <nav className="flex-1 px-3 py-3 space-y-0.5 overflow-y-auto">
+        {filteredItems.map((item) => {
+          const isActive = activeTab === item.id;
+          return (
+            <button
+              key={item.id}
+              type="button"
+              aria-label={item.label}
+              onClick={() => handleTabChange(item.id)}
+              className={cn(
+                'w-full flex items-center gap-3 px-3 py-2.5 rounded-xl transition-all group text-sm',
+                isActive
+                  ? 'bg-amber-400 text-white font-semibold shadow-sm shadow-amber-200'
+                  : 'text-gray-500 hover:text-gray-800 hover:bg-gray-50 font-medium'
+              )}
+            >
+              <item.icon
+                className={cn(
+                  'w-4 h-4 shrink-0',
+                  isActive ? 'text-white' : 'text-gray-400 group-hover:text-gray-600'
+                )}
+              />
+              <span className="flex-1 text-left">{item.label}</span>
+              {isActive && (
+                <motion.div
+                  layoutId="activeTab"
+                  className="w-1.5 h-1.5 bg-white rounded-full shrink-0 opacity-70"
+                />
+              )}
+            </button>
+          );
+        })}
+      </nav>
+
+      {/* LOGOUT */}
+      <div className="px-3 py-3 border-t border-gray-50 shrink-0">
+        <button
+          type="button"
+          onClick={handleLogout}
+          className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-red-400 hover:bg-red-50 hover:text-red-500 transition-all text-sm font-medium"
+        >
+          <LogOut className="w-4 h-4 shrink-0" />
+          Sign Out
+        </button>
+      </div>
+    </>
+  );
 
   return (
     <div className="flex min-h-screen bg-gray-50">
 
-      {/* ======================================== */}
-      {/* SIDEBAR */}
-      {/* ======================================== */}
-      <aside className="hidden md:flex w-52 bg-white border-r border-gray-100 flex-col fixed inset-y-0 z-50">
+      {/* ── MOBILE OVERLAY ── */}
+      <AnimatePresence>
+        {sidebarOpen && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            transition={{ duration: 0.2 }}
+            className="fixed inset-0 bg-black/40 z-40 md:hidden"
+            onClick={() => setSidebarOpen(false)}
+          />
+        )}
+      </AnimatePresence>
 
-        {/* BRAND */}
-        <div className="px-5 py-5 border-b border-gray-50">
-
-          <div className="flex items-center gap-2.5">
-
-            {/* DEVICE AVATAR */}
-            <div className="w-9 h-9 rounded-xl overflow-hidden border-2 border-amber-200">
-
-              <img
-                src="logo.png"
-                alt="feeder"
-                className="w-full h-full object-cover"
-              />
-            </div>
-
-            {/* BRAND INFO */}
-            <div>
-              <p className="text-sm font-bold text-gray-800 leading-none">
-                PawfectCare
-              </p>
-
-              <p className="text-[10px] text-green-500 font-medium mt-0.5 flex items-center gap-1">
-
-                <span className="w-1.5 h-1.5 bg-green-400 rounded-full inline-block animate-pulse" />
-
-                Status: Online
-              </p>
-            </div>
-          </div>
-        </div>
-
-        {/* NAVIGATION */}
-        <nav className="flex-1 px-3 py-3 space-y-1 overflow-y-auto">
-
-          {filteredItems.map((item) => {
-            const isActive =
-              activeTab === item.id;
-
-            return (
-              <button
-                key={item.id}
-                aria-label={item.label}
-                onClick={() =>
-                  onTabChange(item.id)
-                }
-                className={cn(
-                  'w-full flex items-center gap-3 px-3 py-2.5 rounded-xl transition-all group text-sm',
-                  isActive
-                    ? 'bg-amber-400 text-white font-semibold shadow-sm shadow-amber-200'
-                    : 'text-gray-500 hover:text-gray-800 hover:bg-gray-50 font-medium'
-                )}
-              >
-                <item.icon
-                  className={cn(
-                    'w-4 h-4 shrink-0',
-                    isActive
-                      ? 'text-white'
-                      : 'text-gray-400 group-hover:text-gray-600'
-                  )}
-                />
-
-                <span className="flex-1 text-left">
-                  {item.label}
-                </span>
-
-                {/* ACTIVE DOT */}
-                {isActive && (
-                  <motion.div
-                    layoutId="activeTab"
-                    className="w-1.5 h-1.5 bg-white rounded-full shrink-0 opacity-70"
-                  />
-                )}
-              </button>
-            );
-          })}
-        </nav>
-
-        {/* LOGOUT */}
-        <div className="px-3 py-3 border-t border-gray-50">
-
-          <button
-            onClick={handleLogout}
-            className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-red-400 hover:bg-red-50 hover:text-red-500 transition-all text-sm font-medium"
+      {/* ── MOBILE SIDEBAR DRAWER ── */}
+      <AnimatePresence>
+        {sidebarOpen && (
+          <motion.aside
+            initial={{ x: '-100%' }}
+            animate={{ x: 0 }}
+            exit={{ x: '-100%' }}
+            transition={{ type: 'tween', duration: 0.25 }}
+            className="fixed inset-y-0 left-0 z-50 w-64 bg-white border-r border-gray-100 flex flex-col md:hidden shadow-2xl"
           >
-            <LogOut className="w-4 h-4 shrink-0" />
+            <SidebarContent />
+          </motion.aside>
+        )}
+      </AnimatePresence>
 
-            Sign Out
-          </button>
-        </div>
+      {/* ── DESKTOP SIDEBAR (always visible on md+) ── */}
+      <aside className="hidden md:flex w-52 bg-white border-r border-gray-100 flex-col fixed inset-y-0 z-50">
+        <SidebarContent />
       </aside>
 
-      {/* ======================================== */}
-      {/* MAIN CONTENT */}
-      {/* ======================================== */}
-      <main className="flex-1 md:ml-52 flex flex-col">
+      {/* ── MAIN CONTENT ── */}
+      <main className="flex-1 md:ml-52 flex flex-col min-w-0">
 
         {/* TOPBAR */}
-        <header className="h-14 bg-white border-b border-gray-100 sticky top-0 z-40 px-4 md:px-6 flex items-center justify-between gap-4">
+        <header className="h-14 bg-white border-b border-gray-100 sticky top-0 z-30 px-4 flex items-center justify-between gap-3">
 
-          {/* PAGE TITLE */}
-          <h1 className="text-base font-bold text-gray-800">
-            PawfectCare
-          </h1>
+          {/* LEFT: hamburger (mobile) + title */}
+          <div className="flex items-center gap-3 min-w-0">
+            <button
+              type="button"
+              aria-label="Buka menu"
+              onClick={() => setSidebarOpen(true)}
+              className="md:hidden w-9 h-9 flex items-center justify-center rounded-xl text-gray-500 hover:bg-gray-100 transition-colors shrink-0"
+            >
+              <Menu className="w-5 h-5" />
+            </button>
+            <h1 className="text-base font-bold text-gray-800 truncate">PawfectCare</h1>
+          </div>
 
           {/* RIGHT ACTIONS */}
-          <div className="flex items-center gap-4">
+          <div className="flex items-center gap-2 shrink-0">
 
             {/* HISTORY */}
             <button
               type="button"
               title="Riwayat"
               aria-label="Riwayat"
-              onClick={() => onTabChange('history')}
+              onClick={() => handleTabChange('history')}
               className={cn(
                 'w-8 h-8 flex items-center justify-center rounded-lg transition-all',
                 activeTab === 'history'
@@ -278,7 +244,7 @@ export function DashboardLayout({
                 type="button"
                 title="Notifikasi"
                 aria-label="Notifikasi"
-                onClick={() => onTabChange('notifications')}
+                onClick={() => handleTabChange('notifications')}
                 className={cn(
                   'w-8 h-8 flex items-center justify-center rounded-lg transition-all',
                   activeTab === 'notifications'
@@ -297,7 +263,7 @@ export function DashboardLayout({
                 type="button"
                 title="Pengaturan Perangkat"
                 aria-label="Pengaturan Perangkat"
-                onClick={() => onTabChange('settings')}
+                onClick={() => handleTabChange('settings')}
                 className={cn(
                   'w-8 h-8 flex items-center justify-center rounded-lg transition-all',
                   activeTab === 'settings'
@@ -314,9 +280,9 @@ export function DashboardLayout({
               type="button"
               title="Profil Kucing"
               aria-label="Profil Kucing"
-              onClick={() => onTabChange('cat-profile')}
+              onClick={() => handleTabChange('cat-profile')}
               className={cn(
-                'w-8 h-8 rounded-full overflow-hidden border-2 transition-all',
+                'w-8 h-8 rounded-full overflow-hidden border-2 transition-all shrink-0',
                 activeTab === 'cat-profile'
                   ? 'border-amber-400 ring-2 ring-amber-200'
                   : 'border-gray-200 hover:border-amber-300'
@@ -332,8 +298,7 @@ export function DashboardLayout({
         </header>
 
         {/* PAGE CONTENT */}
-        <div className="flex-1 p-4 md:p-6 flex flex-col">
-
+        <div className="flex-1 p-4 md:p-6 flex flex-col min-w-0">
           <motion.div
             key={activeTab}
             className="flex-1 flex flex-col"
@@ -346,9 +311,9 @@ export function DashboardLayout({
         </div>
 
         {/* FOOTER */}
-        <footer className="py-3 px-6 border-t border-gray-100 bg-white">
+        <footer className="py-3 px-4 border-t border-gray-100 bg-white">
           <p className="text-xs text-gray-400 text-center">
-            © {new Date().getFullYear()} PawfectCare Tugas Akhir Endhisa Ocha Jauhary — All rights reserved.
+            © {new Date().getFullYear()} PawfectCare — Tugas Akhir Endhisa Ocha Jauhary
           </p>
         </footer>
       </main>

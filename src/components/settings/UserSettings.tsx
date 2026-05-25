@@ -529,7 +529,7 @@ export function UserSettings() {
       {/* ADD USER MODAL */}
       {showAddModal && (
         <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4">
-          <div className="bg-white rounded-3xl p-8 w-full max-w-md">
+          <div className="bg-white rounded-3xl p-5 md:p-8 w-full max-w-md">
             <div className="flex items-center justify-between mb-6">
               <h3 className="text-2xl font-bold">
                 Add User
@@ -639,7 +639,7 @@ export function UserSettings() {
       {/* DELETE MODAL */}
       {selectedUser && (
         <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4">
-          <div className="bg-white rounded-3xl p-8 w-full max-w-sm">
+          <div className="bg-white rounded-3xl p-5 md:p-8 w-full max-w-sm">
             <h3 className="text-2xl font-bold mb-4">
               Delete User
             </h3>

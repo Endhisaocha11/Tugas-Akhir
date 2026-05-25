@@ -578,8 +578,8 @@ export function Dashboard() {
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-5">
 
         {/* PROFILE CARD */}
-        <div className="lg:col-span-2 bg-white rounded-4xl border border-gray-200 p-8 shadow-sm">
-          <div className="flex flex-col xl:flex-row xl:items-center gap-8">
+        <div className="lg:col-span-2 bg-white rounded-4xl border border-gray-200 p-5 md:p-8 shadow-sm">
+          <div className="flex flex-col xl:flex-row xl:items-center gap-5 md:gap-8">
 
             {/* AVATAR */}
             <div className="relative shrink-0">
@@ -602,11 +602,11 @@ export function Dashboard() {
 
             {/* INFO */}
             <div className="flex-1">
-              <h1 className="text-[42px] leading-none font-black text-gray-900">
+              <h1 className="text-2xl md:text-[42px] leading-none font-black text-gray-900">
                 {cat?.name ?? '—'}
               </h1>
 
-              <div className="flex flex-wrap gap-3 mt-5">
+              <div className="flex flex-wrap gap-2 md:gap-3 mt-3 md:mt-5">
                 <span className="px-4 py-2 rounded-2xl bg-gray-100 text-gray-700 text-lg font-semibold">
                   Berat {cat?.weight ?? '—'}kg
                 </span>
@@ -625,16 +625,16 @@ export function Dashboard() {
                 )}
               </div>
 
-              <div className="flex flex-wrap gap-12 mt-8">
+              <div className="flex flex-wrap gap-6 md:gap-12 mt-4 md:mt-8">
                 <div>
-                  <p className="text-lg text-gray-500 font-medium">Target Harian</p>
-                  <h2 className="text-[42px] font-black text-amber-500 leading-none mt-2">
+                  <p className="text-sm md:text-lg text-gray-500 font-medium">Target Harian</p>
+                  <h2 className="text-2xl md:text-[42px] font-black text-amber-500 leading-none mt-1 md:mt-2">
                     {dailyTarget > 0 ? `${dailyTarget}g` : '—'}
                   </h2>
                 </div>
                 <div>
-                  <p className="text-lg text-gray-500 font-medium">Kalori/Hari</p>
-                  <h2 className="text-[42px] font-black text-blue-500 leading-none mt-2">
+                  <p className="text-sm md:text-lg text-gray-500 font-medium">Kalori/Hari</p>
+                  <h2 className="text-2xl md:text-[42px] font-black text-blue-500 leading-none mt-1 md:mt-2">
                     {cat?.dailyCalorieTarget ? `${cat.dailyCalorieTarget}` : '—'}
                   </h2>
                 </div>
@@ -645,16 +645,16 @@ export function Dashboard() {
         </div>
 
         {/* PROGRESS CARD */}
-        <div className="bg-white rounded-4xl border border-gray-200 p-8 shadow-sm flex flex-col justify-center">
-          <p className="text-lg font-bold uppercase tracking-[4px] text-amber-500">
+        <div className="bg-white rounded-4xl border border-gray-200 p-5 md:p-8 shadow-sm flex flex-col justify-center">
+          <p className="text-sm md:text-lg font-bold uppercase tracking-[4px] text-amber-500">
             Progress Pemberian
           </p>
 
-          <div className="my-10 text-center">
-            <h1 className="text-[72px] leading-none font-black text-gray-900">
+          <div className="my-5 md:my-10 text-center">
+            <h1 className="text-5xl md:text-[72px] leading-none font-black text-gray-900">
               {todayTotal}g
             </h1>
-            <p className="text-2xl text-gray-500 mt-4 font-medium">
+            <p className="text-lg md:text-2xl text-gray-500 mt-2 md:mt-4 font-medium">
               dari {dailyTarget > 0 ? `${dailyTarget}g` : '—'}
             </p>
           </div>
@@ -1036,7 +1036,7 @@ export function Dashboard() {
               animate={{ scale: 1, opacity: 1, y: 0 }}
               exit={{ scale: 0.92, opacity: 0, y: 20 }}
               transition={{ type: 'spring', damping: 20, stiffness: 300 }}
-              className="bg-white rounded-4xl p-8 w-full max-w-md shadow-2xl relative"
+              className="bg-white rounded-4xl p-5 md:p-8 w-full max-w-md shadow-2xl relative"
             >
               <button
                 type="button"

@@ -197,7 +197,7 @@ export function MonitoringSelection() {
         {/* ── INLINE EDUCATION PANEL ── */}
         {showEdu && (
           <div className="mb-10 bg-white rounded-3xl border border-purple-100 shadow-sm overflow-hidden">
-            <div className="bg-linear-to-r from-purple-600 to-indigo-600 px-8 py-6">
+            <div className="bg-linear-to-r from-purple-600 to-indigo-600 px-5 py-4 md:px-8 md:py-6">
               <p className="text-xs font-black uppercase tracking-[3px] text-white/70 mb-1">EDUKASI</p>
               <h2 className="text-2xl font-black text-white">Panduan Nutrisi &amp; Kesehatan Kucing</h2>
             </div>

@@ -136,7 +136,7 @@ export function AuthScreen() {
               initial={{ opacity: 0, scale: 0.95 }}
               animate={{ opacity: 1, scale: 1 }}
               exit={{ opacity: 0, scale: 0.95 }}
-              className="w-full max-w-md bg-white rounded-[40px] p-10 shadow-2xl border border-amber-100"
+              className="w-full max-w-md bg-white rounded-[40px] p-6 md:p-10 shadow-2xl border border-amber-100"
             >
               <div className="text-center mb-8">
                 <div className="w-20 h-20 bg-amber-100 rounded-full flex items-center justify-center mx-auto mb-5">
@@ -214,7 +214,7 @@ export function AuthScreen() {
               initial={{ opacity: 0, scale: 0.95 }}
               animate={{ opacity: 1, scale: 1 }}
               exit={{ opacity: 0, scale: 0.95 }}
-              className="w-full max-w-md bg-white rounded-[40px] p-10 shadow-2xl border border-amber-100"
+              className="w-full max-w-md bg-white rounded-[40px] p-6 md:p-10 shadow-2xl border border-amber-100"
             >
               <div className="text-center mb-10">
                 <div className="w-20 h-20 bg-amber-100 rounded-full flex items-center justify-center mx-auto mb-5">
@@ -330,7 +330,7 @@ export function AuthScreen() {
               className="bg-white w-full max-w-lg rounded-[40px] shadow-2xl overflow-hidden"
             >
               {/* HEADER */}
-              <div className={`relative p-10 text-white text-center overflow-hidden ${
+              <div className={`relative p-6 md:p-10 text-white text-center overflow-hidden ${
                 isAdmin
                   ? 'bg-gradient-to-br from-violet-700 via-purple-600 to-indigo-600'
                   : 'bg-gradient-to-br from-amber-600 via-orange-500 to-yellow-500'

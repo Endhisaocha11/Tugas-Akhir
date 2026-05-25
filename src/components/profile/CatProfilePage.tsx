@@ -388,10 +388,10 @@ export function CatProfilePage() {
     .reverse();
 
   return (
-    <div className="space-y-10">
+    <div className="space-y-5 md:space-y-10">
 
       {/* ── PROFILE HEADER ── */}
-      <div className="flex flex-col md:flex-row items-center md:items-start gap-10 p-10 bg-white rounded-[40px] border border-amber-100 shadow-sm relative overflow-hidden">
+      <div className="flex flex-col md:flex-row items-center md:items-start gap-6 md:gap-10 p-5 md:p-10 bg-white rounded-[40px] border border-amber-100 shadow-sm relative overflow-hidden">
         <div className="absolute top-0 right-0 w-80 h-80 bg-amber-50 rounded-full -mr-40 -mt-40 blur-3xl pointer-events-none" />
 
         <div className="relative shrink-0 group">
@@ -438,7 +438,7 @@ export function CatProfilePage() {
         <div className="flex-1 text-center md:text-left space-y-5">
           <div>
             <div className="flex flex-col md:flex-row items-center gap-4 mb-2">
-              <h2 className="text-5xl font-black text-gray-900 tracking-tight">{cat.name}</h2>
+              <h2 className="text-3xl md:text-5xl font-black text-gray-900 tracking-tight">{cat.name}</h2>
               <span className={cn('px-4 py-1.5 rounded-full text-sm font-black uppercase tracking-wider border', getBcsColor(bc))}>
                 BCS {bc} — {getBodyLabel(bc)}
               </span>
@@ -485,7 +485,7 @@ export function CatProfilePage() {
       </div>
 
       {/* ── HEALTH + FEEDING PLAN ── */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-10">
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-5 md:gap-10">
 
         {/* Health Status */}
         <div className="space-y-6">
@@ -584,15 +584,15 @@ export function CatProfilePage() {
             <Calculator className="text-amber-500 w-6 h-6" />
             <h3 className="text-2xl font-black text-gray-900 uppercase tracking-tight">Rencana Feeding</h3>
           </div>
-          <div className="bg-gray-900 rounded-3xl p-8 text-white space-y-6">
-            <div className="grid grid-cols-2 gap-6">
+          <div className="bg-gray-900 rounded-3xl p-5 md:p-8 text-white space-y-5 md:space-y-6">
+            <div className="grid grid-cols-2 gap-4 md:gap-6">
               <div>
                 <p className="text-[10px] font-black uppercase tracking-widest text-white/40 mb-1">Target Kalori/Hari</p>
-                <p className="text-4xl font-black">{cat.dailyCalorieTarget}<span className="text-lg text-amber-400 ml-1">kcal</span></p>
+                <p className="text-2xl md:text-4xl font-black">{cat.dailyCalorieTarget}<span className="text-sm md:text-lg text-amber-400 ml-1">kcal</span></p>
               </div>
               <div>
                 <p className="text-[10px] font-black uppercase tracking-widest text-white/40 mb-1">Porsi/Hari</p>
-                <p className="text-4xl font-black">{cat.dailyGramTarget}<span className="text-lg text-amber-400 ml-1">g</span></p>
+                <p className="text-2xl md:text-4xl font-black">{cat.dailyGramTarget}<span className="text-sm md:text-lg text-amber-400 ml-1">g</span></p>
               </div>
             </div>
             <div className="grid grid-cols-2 gap-4">
