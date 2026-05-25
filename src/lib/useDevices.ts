@@ -37,7 +37,7 @@ function mergeDevice(
     isOnline:              rtdbData.isOnline ?? false,
     lastPulse:             parseRtdbTime(rtdbData.time),
     foodStockLevel:        rtdbData.foodStock ?? 0,
-    currentWeightOnScale:  Math.round((rtdbData.weight ?? 0) * 1000), // kg → gram
+    currentWeightOnScale:  Math.round(rtdbData.weight ?? 0),
     servoStatus:           rtdbData.servoStatus ?? 'idle',
     calibrationFactor:     rtdbData.calibrationFactor ?? 0,
     // Claim metadata dari Firestore (null jika belum pernah diklaim)

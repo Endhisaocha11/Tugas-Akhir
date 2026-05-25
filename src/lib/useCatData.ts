@@ -177,7 +177,7 @@ export function useCatData(): CatData {
         lastPulse:            parseRtdbTime(rtdbDeviceData?.time)  || fsDevice.lastPulse,
         foodStockLevel:       rtdbDeviceData?.foodStock            ?? fsDevice.foodStockLevel,
         currentWeightOnScale: rtdbDeviceData != null
-          ? Math.round((rtdbDeviceData.weight ?? 0) * 1000)        // kg → gram
+          ? Math.round(rtdbDeviceData.weight ?? 0)
           : fsDevice.currentWeightOnScale,
         servoStatus:          rtdbDeviceData?.servoStatus          ?? fsDevice.servoStatus,
       }
