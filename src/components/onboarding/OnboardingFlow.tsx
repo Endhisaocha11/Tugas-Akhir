@@ -1,5 +1,5 @@
-import React, { useState, useRef, ChangeEvent } from "react";
-import { doc, getDoc, setDoc, updateDoc } from "firebase/firestore";
+import React, { useState, useRef, useEffect, ChangeEvent } from "react";
+import { doc, getDoc, setDoc, updateDoc, collection, query, where, getDocs } from "firebase/firestore";
 import { db } from "../../lib/firebase";
 import { useAuth } from "../../lib/AuthContext";
 
@@ -262,7 +262,9 @@ export default function OnboardingFlow({
   const [photoUploadWarning, setPhotoUploadWarning] = useState<boolean>(false);
   const [photoPreview, setPhotoPreview] = useState<string | null>(null);
   const [photoFile, setPhotoFile] = useState<File | null>(null);
+  const [duplicateNameAlert, setDuplicateNameAlert] = useState<string | null>(null);
   const fileRef = useRef<HTMLInputElement | null>(null);
+  const nameCheckRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
 
   const [form, setForm] = useState<FormState>({
     name: "",
@@ -278,6 +280,40 @@ export default function OnboardingFlow({
 
   const upd = (patch: Partial<FormState>) =>
     setForm((f) => ({ ...f, ...patch }));
+
+  // Cek duplikat nama profil terhadap profil aktif & riwayat
+  useEffect(() => {
+    clearTimeout(nameCheckRef.current);
+    if (!form.name.trim() || !user) {
+      setDuplicateNameAlert(null);
+      return;
+    }
+    nameCheckRef.current = setTimeout(async () => {
+      try {
+        const nameLower = form.name.trim().toLowerCase();
+        const catId = `${user.uid}_main`;
+
+        const catSnap = await getDoc(doc(db, 'cats', catId));
+        if (catSnap.exists() && (catSnap.data().name ?? '').toLowerCase() === nameLower) {
+          setDuplicateNameAlert(`Nama "${form.name.trim()}" sama dengan profil aktif saat ini.`);
+          return;
+        }
+
+        const histSnap = await getDocs(
+          query(collection(db, 'catProfileHistory'), where('ownerId', '==', user.uid))
+        );
+        const dup = histSnap.docs.find((d) => (d.data().name ?? '').toLowerCase() === nameLower);
+        if (dup) {
+          setDuplicateNameAlert(`Nama "${form.name.trim()}" sudah pernah digunakan di riwayat profil sebelumnya.`);
+          return;
+        }
+
+        setDuplicateNameAlert(null);
+      } catch {
+        setDuplicateNameAlert(null);
+      }
+    }, 700);
+  }, [form.name, user]);
 
   const targets = calculateTargets({
     weight: form.weight,
@@ -681,8 +717,19 @@ export default function OnboardingFlow({
                           upd({ name: e.target.value })
                         }
                         placeholder="Contoh: Milo"
-                        className="w-full h-16 px-6 rounded-2xl border border-gray-200 bg-gray-50 text-lg font-semibold outline-none focus:border-amber-400 focus:bg-white transition-all"
+                        className={cn(
+                          "w-full h-16 px-6 rounded-2xl border bg-gray-50 text-lg font-semibold outline-none transition-all",
+                          duplicateNameAlert
+                            ? "border-red-400 focus:border-red-500"
+                            : "border-gray-200 focus:border-amber-400 focus:bg-white"
+                        )}
                       />
+                      {duplicateNameAlert && (
+                        <div className="mt-2 flex items-start gap-2 bg-red-50 border border-red-200 rounded-xl px-4 py-3">
+                          <span className="text-red-500 text-base shrink-0">⚠️</span>
+                          <p className="text-sm font-semibold text-red-700">{duplicateNameAlert} Gunakan nama lain untuk menghindari kebingungan dengan riwayat profil.</p>
+                        </div>
+                      )}
                     </div>
 
                     {/* Gender */}

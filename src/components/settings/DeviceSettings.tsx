@@ -10,6 +10,8 @@ import { doc, updateDoc } from 'firebase/firestore';
 import { db } from '../../lib/firebase';
 import { useCatData } from '../../lib/useCatData';
 import { useDevice } from '../../lib/DeviceContext';
+import { useAuth } from '../../lib/AuthContext';
+import { releaseDevice } from '../../lib/useDeviceClaim';
 import { cn } from '../../lib/utils';
 
 function DeviceCard({ device, deviceNumber, targetOwnerId }: {
@@ -95,8 +97,28 @@ function DeviceCard({ device, deviceNumber, targetOwnerId }: {
 }
 
 export function DeviceSettings() {
+  const { user } = useAuth();
   const { device, devices, targetOwnerId, loading } = useCatData();
-  const { selectedDeviceId, setSelectedDeviceId } = useDevice();
+  const { selectedDeviceId } = useDevice();
+
+  // Release device
+  const [showReleaseConfirm, setShowReleaseConfirm] = useState(false);
+  const [releasing, setReleasing] = useState(false);
+  const [releaseError, setReleaseError] = useState<string | null>(null);
+
+  const handleReleaseDevice = async () => {
+    if (!user || !devices[0]?.id) return;
+    setReleasing(true);
+    setReleaseError(null);
+    try {
+      await releaseDevice(devices[0].id, user.uid);
+      // AuthContext onSnapshot akan update profile.claimedDeviceId → null
+      // App.tsx otomatis redirect ke DeviceSelectionScreen
+    } catch {
+      setReleaseError('Gagal melepas perangkat. Periksa koneksi dan coba lagi.');
+      setReleasing(false);
+    }
+  };
 
   // Calibration factor — editable, synced from Firestore
   const [calibrationFactor, setCalibrationFactor] = useState<number>(1.0);
@@ -306,6 +328,21 @@ export function DeviceSettings() {
         )}
       </section>
 
+      {/* ── MONITORING PERANGKAT ── */}
+      <section className="space-y-4">
+        <div className="flex items-center gap-3">
+          <Cpu className="w-5 h-5 text-indigo-500" />
+          <h3 className="font-black text-xl text-gray-900">Monitoring Perangkat</h3>
+        </div>
+        <p className="text-sm text-gray-400">
+          Status real-time semua feeder yang terhubung ke akun ini.
+        </p>
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+          <DeviceCard device={devices[0]} deviceNumber={1} targetOwnerId={targetOwnerId} />
+          <DeviceCard device={devices[1]} deviceNumber={2} targetOwnerId={targetOwnerId} />
+        </div>
+      </section>
+
       {/* ── HARDWARE CALIBRATION ── */}
       <section className="space-y-4">
         <div className="flex items-center gap-3">
@@ -461,18 +498,65 @@ export function DeviceSettings() {
             <Cpu className="w-5 h-5 text-purple-500" />
             <h3 className="font-black text-xl text-gray-900">Perangkat Aktif</h3>
           </div>
-          <button
-            type="button"
-            onClick={() => setSelectedDeviceId('')}
-            className="flex items-center gap-2 px-4 py-2 rounded-2xl bg-gray-100 hover:bg-gray-200 text-gray-600 text-sm font-bold transition-colors"
-          >
-            <SwitchCamera className="w-4 h-4" />
-            Ganti Perangkat
-          </button>
+          {!showReleaseConfirm && (
+            <button
+              type="button"
+              onClick={() => setShowReleaseConfirm(true)}
+              className="flex items-center gap-2 px-4 py-2 rounded-2xl bg-black hover:bg-gray-800 text-white text-sm font-bold transition-colors"
+            >
+              <SwitchCamera className="w-4 h-4" />
+              Ganti Perangkat
+            </button>
+          )}
         </div>
         <p className="text-sm text-gray-400">
-          ID perangkat yang sedang aktif dimonitor. Klik &quot;Ganti Perangkat&quot; untuk beralih ke feeder lain.
+          Untuk beralih ke feeder lain, perangkat saat ini harus dilepas terlebih dahulu.
+          Setelah dilepas, kamu bisa memilih dan mengklaim perangkat baru.
         </p>
+
+        {/* Konfirmasi lepas perangkat */}
+        {showReleaseConfirm && (
+          <motion.div
+            initial={{ opacity: 0, y: -6 }}
+            animate={{ opacity: 1, y: 0 }}
+            className="bg-red-50 border border-red-200 rounded-3xl p-5 space-y-4"
+          >
+            <div className="flex items-start gap-3">
+              <AlertTriangle className="w-5 h-5 text-red-500 shrink-0 mt-0.5" />
+              <div>
+                <p className="font-black text-red-800">Lepas perangkat ini?</p>
+                <p className="text-sm text-red-600 mt-1">
+                  Perangkat <strong>{devices[0]?.name ?? devices[0]?.id ?? '—'}</strong> akan dilepas dari akun kamu.
+                  Kamu akan diarahkan ke halaman <strong>Klaim Perangkat</strong> untuk memilih feeder baru.
+                  Profil kucing perlu diatur ulang setelahnya.
+                </p>
+              </div>
+            </div>
+            {releaseError && (
+              <p className="text-sm text-red-600 font-semibold">{releaseError}</p>
+            )}
+            <div className="flex gap-3">
+              <button
+                type="button"
+                onClick={() => { setShowReleaseConfirm(false); setReleaseError(null); }}
+                disabled={releasing}
+                className="flex-1 py-2.5 rounded-2xl border border-gray-200 text-sm font-bold text-gray-600 hover:bg-gray-50 transition-colors disabled:opacity-50"
+              >
+                Batal
+              </button>
+              <button
+                type="button"
+                onClick={handleReleaseDevice}
+                disabled={releasing}
+                className="flex-1 py-2.5 rounded-2xl bg-red-500 hover:bg-red-600 text-white text-sm font-black transition-colors disabled:opacity-60 flex items-center justify-center gap-2"
+              >
+                {releasing
+                  ? <><Loader2 className="w-4 h-4 animate-spin" /> Melepas...</>
+                  : <><SwitchCamera className="w-4 h-4" /> Ya, Lepas &amp; Ganti</>}
+              </button>
+            </div>
+          </motion.div>
+        )}
 
         {/* Selected device info */}
         <div className="bg-gray-50 border border-gray-200 rounded-3xl p-5 space-y-3">

@@ -14,6 +14,7 @@ import { DeviceSettings } from './components/settings/DeviceSettings';
 import { UserSettings } from './components/settings/UserSettings';
 import { FeedingControl } from './components/control/FeedingControl';
 import { CatProfilePage } from './components/profile/CatProfilePage';
+import { Analytics } from './components/analytics/Analytics';
 import { MonitoringSelection } from './components/onboarding/MonitoringSelection';
 import { Notifications } from './components/notifications/Notifications';
 import { UserRole, DeviceStatus } from './types';
@@ -319,6 +320,9 @@ function AppContent() {
 
       case 'cat-profile':
         return <CatProfilePage />;
+
+      case 'analytics':
+        return <Analytics />;
 
       case 'history':
         return <FeedingHistory />;

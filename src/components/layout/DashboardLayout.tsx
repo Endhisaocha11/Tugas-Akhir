@@ -15,6 +15,7 @@ import {
   Radio,
   Menu,
   X,
+  BarChart3,
 } from 'lucide-react';
 
 import { motion, AnimatePresence } from 'framer-motion';
@@ -33,15 +34,16 @@ interface SidebarItem {
 }
 
 const sidebarItems: SidebarItem[] = [
-  { id: 'onboarding-flow', label: 'Onboarding Flow', icon: BookOpen, adminOnly: true },
+  { id: 'onboarding-flow', label: 'Onboarding Flow', icon: BookOpen,      adminOnly: true },
   { id: 'dashboard',       label: 'Dashboard',        icon: LayoutDashboard },
-  { id: 'feeding-control', label: 'Feeding Control',  icon: Utensils,  adminOnly: true },
+  { id: 'feeding-control', label: 'Feeding Control',  icon: Utensils,      adminOnly: true },
+  { id: 'analytics',       label: 'Analytics',        icon: BarChart3 },
   { id: 'cat-profile',     label: 'Cat Profile',      icon: Cat },
   { id: 'history',         label: 'Feeding History',  icon: History },
   { id: 'education',       label: 'FLUTD Education',  icon: BookOpen },
   { id: 'notifications',   label: 'Notifications',    icon: Bell },
-  { id: 'settings',        label: 'Settings',         icon: Settings,  adminOnly: true },
-  { id: 'user-settings',   label: 'User Settings',    icon: Users,     adminOnly: true },
+  { id: 'settings',        label: 'Settings',         icon: Settings,      adminOnly: true },
+  { id: 'user-settings',   label: 'User Settings',    icon: Users,         adminOnly: true },
 ];
 
 interface DashboardLayoutProps {

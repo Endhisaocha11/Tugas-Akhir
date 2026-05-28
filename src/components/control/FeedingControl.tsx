@@ -4,15 +4,15 @@ import {
   Utensils, Clock, AlertTriangle, Play, Settings2,
   Check, Zap, ZapOff, Loader2, CheckCircle2, XCircle,
   Pencil, Info, WifiOff, Copy, ChevronDown, ChevronUp,
-  History, Cpu, Scale, BanIcon,
+  History, BanIcon, Database,
 } from 'lucide-react';
 import { doc, updateDoc, setDoc } from 'firebase/firestore';
-import { ref, set } from 'firebase/database';
+import { ref, set, onValue } from 'firebase/database';
 import { db, rtdb } from '../../lib/firebase';
 import { useAuth } from '../../lib/AuthContext';
 import { useCatData } from '../../lib/useCatData';
 import { cn } from '../../lib/utils';
-import type { FeedingScheduleSlot, DeviceStatus } from '../../types';
+import type { FeedingScheduleSlot } from '../../types';
 
 // ── Color Utilities ───────────────────────────────────────────────────────────
 
@@ -22,11 +22,6 @@ function getFoodStockTheme(pct: number) {
   return { bar: 'bg-red-400', text: 'text-red-600', bg: 'bg-red-50', border: 'border-red-200', dot: '🔴', label: 'Hampir habis' };
 }
 
-function getBowlWeightTheme(weightGrams: number) {
-  if (weightGrams > 30) return { text: 'text-green-600', bg: 'bg-green-50', border: 'border-green-200', dot: '🟢', label: 'Masih tersedia' };
-  if (weightGrams > 10) return { text: 'text-yellow-600', bg: 'bg-yellow-50', border: 'border-yellow-200', dot: '🟡', label: 'Berkurang' };
-  return { text: 'text-red-600', bg: 'bg-red-50', border: 'border-red-200', dot: '🔴', label: weightGrams === 0 ? 'Habis' : 'Hampir habis' };
-}
 
 function getProgressBarColor(pct: number) {
   if (pct >= 100) return 'bg-red-500';
@@ -50,112 +45,6 @@ function getSlotIcon(time: string): string {
   if (hour < 15) return '☀️';
   if (hour < 19) return '🌤️';
   return '🌙';
-}
-
-// ── DeviceMonitorCard ─────────────────────────────────────────────────────────
-
-interface DeviceMonitorCardProps {
-  device: DeviceStatus | undefined;
-  deviceNumber: 1 | 2;
-  isSelected: boolean;
-  onSelect: () => void;
-}
-
-function DeviceMonitorCard({ device, deviceNumber, isSelected, onSelect }: DeviceMonitorCardProps) {
-  const stockTheme = getFoodStockTheme(device?.foodStockLevel ?? 0);
-  const bowlTheme = getBowlWeightTheme(device?.currentWeightOnScale ?? 0);
-  const label = device?.name ?? `Feeder ESP ${deviceNumber}`;
-
-  return (
-    <div
-      role="button"
-      tabIndex={0}
-      onClick={onSelect}
-      onKeyDown={(e) => e.key === 'Enter' && onSelect()}
-      className={cn(
-        'flex-1 p-5 rounded-3xl border-2 cursor-pointer transition-all select-none',
-        isSelected
-          ? 'border-amber-400 bg-amber-50 shadow-md shadow-amber-100'
-          : 'border-gray-200 bg-white hover:border-amber-200'
-      )}
-    >
-      {/* Header row */}
-      <div className="flex items-center justify-between mb-4">
-        <div className="flex items-center gap-2.5">
-          <div className={cn(
-            'w-2.5 h-2.5 rounded-full shrink-0',
-            device?.isOnline ? 'bg-green-400 animate-pulse' : 'bg-gray-300'
-          )} />
-          <span className="font-black text-gray-800 text-base">{label}</span>
-          {isSelected && (
-            <span className="text-xs bg-amber-400 text-white px-2 py-0.5 rounded-full font-bold">Aktif</span>
-          )}
-        </div>
-        <span className={cn(
-          'text-xs font-bold px-2 py-1 rounded-lg',
-          device?.isOnline ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-500'
-        )}>
-          {device ? (device.isOnline ? 'Online' : 'Offline') : 'Belum terhubung'}
-        </span>
-      </div>
-
-      {/* Food stock */}
-      <div className="mb-3">
-        <div className="flex justify-between text-xs mb-1.5">
-          <span className="text-gray-500 font-semibold">Stok pakan</span>
-          <span className={cn('font-black', stockTheme.text)}>{device?.foodStockLevel ?? 0}%</span>
-        </div>
-        <div className="w-full h-2.5 bg-gray-100 rounded-full overflow-hidden">
-          <motion.div
-            initial={{ width: 0 }}
-            animate={{ width: `${Math.min(device?.foodStockLevel ?? 0, 100)}%` }}
-            transition={{ duration: 0.7 }}
-            className={cn('h-full rounded-full', stockTheme.bar)}
-          />
-        </div>
-        <p className={cn('text-xs mt-1 font-semibold', stockTheme.text)}>
-          {stockTheme.dot} {stockTheme.label}
-        </p>
-      </div>
-
-      {/* Bowl weight / food eaten indicator */}
-      <div className={cn('px-3 py-2.5 rounded-2xl border mb-3', bowlTheme.bg, bowlTheme.border)}>
-        <div className="flex justify-between items-center">
-          <div className="flex items-center gap-1.5">
-            <Scale className={cn('w-3.5 h-3.5', bowlTheme.text)} />
-            <span className="text-xs text-gray-500 font-semibold">Mangkuk</span>
-          </div>
-          <span className={cn('font-black text-lg leading-none', bowlTheme.text)}>
-            {device?.currentWeightOnScale ?? 0}g
-          </span>
-        </div>
-        <p className={cn('text-xs font-bold mt-1', bowlTheme.text)}>
-          {bowlTheme.dot} {bowlTheme.label}
-        </p>
-      </div>
-
-      {/* Servo status */}
-      <div className="flex items-center gap-2">
-        <Cpu className="w-3.5 h-3.5 text-gray-400" />
-        <span className="text-xs text-gray-400">Servo:</span>
-        <span className={cn(
-          'text-xs font-bold px-2 py-0.5 rounded-lg',
-          device?.servoStatus === 'active' ? 'bg-blue-100 text-blue-700' :
-          device?.servoStatus === 'jammed' ? 'bg-red-100 text-red-700' :
-          'bg-gray-100 text-gray-500'
-        )}>
-          {device?.servoStatus === 'active' ? '⚡ Aktif' :
-           device?.servoStatus === 'jammed' ? '⚠️ Macet' :
-           '✓ Idle'}
-        </span>
-        {device?.lastPulse && (
-          <span className="text-xs text-gray-300 ml-auto">
-            {new Date(device.lastPulse).toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' })}
-          </span>
-        )}
-      </div>
-    </div>
-  );
 }
 
 // ── Usage History Row ─────────────────────────────────────────────────────────
@@ -249,9 +138,11 @@ export function FeedingControl() {
   const [smartFeedEnabled, setSmartFeedEnabled] = useState(true);
 
   // Manual feed
-  const [feedingAmount, setFeedingAmount] = useState(50);
+  const [feedingAmount, setFeedingAmount] = useState(5);
   const [isFeeding, setIsFeeding] = useState(false);
-  const [feedResult, setFeedResult] = useState<'success' | 'error' | null>(null);
+  const [feedResult, setFeedResult] = useState<'success' | 'timeout' | 'error' | null>(null);
+  const [feedPhase, setFeedPhase] = useState<'sending' | 'waiting'>('sending');
+  const [lastFedAmount, setLastFedAmount] = useState(0);
   const [showConfirm, setShowConfirm] = useState(false);
 
   // Edit mode
@@ -304,6 +195,13 @@ export function FeedingControl() {
       .reduce((sum, l) => sum + (l.amountDispensed ?? 0), 0)
   );
 
+  // Manual-only total today — used as basis for auto-slot adjustment
+  const todayManualTotal = Math.round(
+    feedingLogs
+      .filter((l) => l.timestamp >= profileUpdatedTodayMs && l.notes === 'manual')
+      .reduce((sum, l) => sum + (l.amountDispensed ?? 0), 0)
+  );
+
   // Use Firestore flag as the authoritative "at limit" state — cleared on profile change
   const isAtDailyLimit = cat?.dailyLimitReachedDate === todayStr;
   // Separate live calc used only to trigger writing the flag to Firestore
@@ -311,15 +209,19 @@ export function FeedingControl() {
   const wouldExceed = dailyTarget > 0 && (todayTotal + feedingAmount) > dailyTarget;
   const progressPct = dailyTarget > 0 ? Math.min(Math.round((todayTotal / dailyTarget) * 100), 100) : 0;
 
-  // Adjustment based on actual logged feedings — used for Firestore sync (ESP32 reads this)
+  // Sync to RTDB (ESP32 reads this) — future slots only, uses full todayTotal
   const syncAdjustedSlots = useMemo(() => {
     if (!dailyTarget) return null;
-    const futureSlots = schedule.filter((s) => s.active !== false && s.time > currentTimeStr);
+    const allActiveSlots = schedule.filter((s) => s.active !== false);
+    const futureSlots = allActiveSlots.filter((s) => s.time > currentTimeStr);
     if (futureSlots.length === 0) return null;
+
+    // Remaining = daily target minus everything given today (manual + auto already fired)
+    const remaining = Math.max(0, dailyTarget - todayTotal);
     const futureTotal = futureSlots.reduce((sum, s) => sum + s.amount, 0);
-    const remaining = dailyTarget - todayTotal;
     if (remaining >= futureTotal) return null;
-    const factor = Math.max(0, remaining) / futureTotal;
+
+    const factor = futureTotal > 0 ? remaining / futureTotal : 0;
     return futureSlots.map((s) => ({
       time: s.time,
       originalAmount: s.amount,
@@ -327,28 +229,28 @@ export function FeedingControl() {
     }));
   }, [dailyTarget, todayTotal, schedule, currentTimeStr]);
 
-  // Preview adjustment including pending slider amount — used for schedule display
-  // Updates live as user moves the slider so they can see the impact before confirming
+  // Display adjustment — ALL active slots, based on manual-only total + pending slider
   const liveAdjustedSlots = useMemo(() => {
     if (!dailyTarget) return null;
-    const futureSlots = schedule.filter((s) => s.active !== false && s.time > currentTimeStr);
-    if (futureSlots.length === 0) return null;
-    const futureTotal = futureSlots.reduce((sum, s) => sum + s.amount, 0);
-    const remaining = dailyTarget - todayTotal - feedingAmount;
-    if (remaining >= futureTotal) return null;
-    const factor = Math.max(0, remaining) / futureTotal;
-    return futureSlots.map((s) => ({
+    const allActiveSlots = schedule.filter((s) => s.active !== false);
+    const allActiveTotal = allActiveSlots.reduce((sum, s) => sum + s.amount, 0);
+    if (allActiveTotal <= 0) return null;
+
+    // Remaining for auto = daily target − manual given today − pending slider
+    const remainingForAuto = Math.max(0, dailyTarget - todayManualTotal - feedingAmount);
+    if (remainingForAuto >= allActiveTotal) return null;
+
+    const factor = remainingForAuto / allActiveTotal;
+    return allActiveSlots.map((s) => ({
       time: s.time,
       originalAmount: s.amount,
       adjustedAmount: Math.max(0, Math.round(s.amount * factor)),
     }));
-  }, [dailyTarget, todayTotal, feedingAmount, schedule, currentTimeStr]);
+  }, [dailyTarget, todayManualTotal, feedingAmount, schedule]);
 
   const futureScheduleTotal = syncAdjustedSlots
     ? syncAdjustedSlots.reduce((sum, s) => sum + s.adjustedAmount, 0)
     : schedule.filter((s) => s.active !== false && s.time > currentTimeStr).reduce((sum, s) => sum + s.amount, 0);
-  const projectedTotal = todayTotal + futureScheduleTotal;
-  const willExceedWithSchedule = dailyTarget > 0 && projectedTotal > dailyTarget;
 
   // Selected device object
   const selectedDevice = devices.find((d) => d.id === selectedDeviceId) ?? devices[0] ?? null;
@@ -383,6 +285,27 @@ export function FeedingControl() {
       dailyLimitReachedDate: todayStr,
     }).catch(console.error);
   }, [isActuallyOverLimit, isAtDailyLimit, cat, todayStr]);
+
+  // ── Sync jadwal efektif ke RTDB agar ESP32 bisa baca untuk auto-feed ────
+  useEffect(() => {
+    if (!rtdb || devices.length === 0 || schedule.length === 0) return;
+    const effectiveSlots = schedule.map((s) => {
+      const adj = syncAdjustedSlots?.find((a) => a.time === s.time);
+      return {
+        time: s.time,
+        amount: adj !== undefined ? adj.adjustedAmount : s.amount,
+        active: s.active !== false,
+      };
+    });
+    const data = {
+      enabled: smartFeedEnabled,
+      dailyLimitReached: isAtDailyLimit,
+      slots: effectiveSlots,
+    };
+    devices.forEach((device) => {
+      set(ref(rtdb, `devices/${device.id}/schedule`), data).catch(console.error);
+    });
+  }, [schedule, syncAdjustedSlots, smartFeedEnabled, isAtDailyLimit, devices]);
 
   // ── Firestore helpers ────────────────────────────────────────────────────
   const catDocRef = () => doc(db, 'cats', cat!.id);
@@ -474,7 +397,13 @@ export function FeedingControl() {
 
     setIsFeeding(true);
     setFeedResult(null);
+    setFeedPhase('sending');
+
+    let wasConfirmed = false;
+
     try {
+      const initialWeight = selectedDevice?.currentWeightOnScale ?? 0;
+
       // 1. Kirim command ke RTDB agar ESP32 buka servo
       if (rtdb) {
         await set(ref(rtdb, `devices/${deviceId}/command`), {
@@ -485,7 +414,33 @@ export function FeedingControl() {
         });
       }
 
-      // 2. Catat log ke Firestore (untuk riwayat & analitik)
+      setFeedPhase('waiting');
+
+      // 2. Tunggu berat mangkuk bertambah sebagai konfirmasi ESP32 dispensing
+      const TIMEOUT_MS = 30_000;
+      const THRESHOLD = Math.max(5, feedingAmount * 0.4);
+
+      wasConfirmed = rtdb
+        ? await new Promise<boolean>((resolve) => {
+            let unsubscribe: (() => void) | null = null;
+            const timer = setTimeout(() => {
+              unsubscribe?.();
+              resolve(false);
+            }, TIMEOUT_MS);
+
+            const weightRef = ref(rtdb, `devices/${deviceId}/weight`);
+            unsubscribe = onValue(weightRef, (snapshot) => {
+              const current = (snapshot.val() as number) ?? 0;
+              if (current >= initialWeight + THRESHOLD) {
+                clearTimeout(timer);
+                unsubscribe?.();
+                resolve(true);
+              }
+            });
+          })
+        : false;
+
+      // 3. Catat log ke Firestore (untuk riwayat & analitik)
       const logId = `${targetOwnerId}_${Date.now()}`;
       await setDoc(doc(db, 'feedingLogs', logId), {
         id: logId,
@@ -494,22 +449,23 @@ export function FeedingControl() {
         timestamp: Date.now(),
         amountRequested: feedingAmount,
         amountDispensed: feedingAmount,
-        status: 'success',
+        status: wasConfirmed ? 'success' : 'sent',
         notes: 'manual',
       });
 
-      // 3. Tandai daily limit jika tercapai
+      // 4. Tandai daily limit jika tercapai
       if (dailyTarget > 0 && (todayTotal + feedingAmount) >= dailyTarget) {
         await updateDoc(catDocRef(), { dailyLimitReachedDate: todayStr });
       }
 
-      setFeedResult('success');
+      setLastFedAmount(feedingAmount);
+      setFeedResult(wasConfirmed ? 'success' : 'timeout');
       setShowConfirm(false);
     } catch {
       setFeedResult('error');
     } finally {
       setIsFeeding(false);
-      setTimeout(() => setFeedResult(null), 4000);
+      setTimeout(() => setFeedResult(null), wasConfirmed ? 5000 : 8000);
     }
   };
 
@@ -523,11 +479,12 @@ export function FeedingControl() {
   // ── Daily Target Alert (for schedule card) ────────────────────────────────
   const DailyTargetAlert = () => {
     if (!dailyTarget) return null;
-    const scheduleRemaining = dailyTarget - scheduleTotal;
-    const scheduleExceeded = scheduleRemaining < 0;
-    const combinedRemaining = dailyTarget - projectedTotal;
-    const combinedExceeded = !scheduleExceeded && willExceedWithSchedule;
-    const isAnyExceeded = scheduleExceeded || combinedExceeded;
+    const scheduleExceeded = scheduleTotal > dailyTarget;
+    const isAnyExceeded = scheduleExceeded;
+
+    // Sisa otomatis = target - manual hari ini
+    const autoRemainingWithPending = Math.max(0, dailyTarget - todayManualTotal - feedingAmount);
+    const showAdjustInfo = todayManualTotal > 0 || feedingAmount > 0;
 
     return (
       <div className={cn(
@@ -542,15 +499,17 @@ export function FeedingControl() {
           <p className="mt-0.5">
             Total jadwal: {scheduleTotal}g
             {scheduleExceeded
-              ? <span className="font-bold"> — Melebihi target {Math.abs(scheduleRemaining)}g! Kurangi porsi.</span>
-              : <span> — Kapasitas jadwal: <strong>{scheduleRemaining}g</strong></span>}
+              ? <span className="font-bold"> — Melebihi target {Math.abs(dailyTarget - scheduleTotal)}g! Kurangi porsi.</span>
+              : <span> — Sisa kapasitas: <strong>{dailyTarget - scheduleTotal}g</strong></span>}
           </p>
-          {!scheduleExceeded && todayTotal > 0 && (
+          {!scheduleExceeded && showAdjustInfo && (
             <p className="mt-1 pt-1 border-t border-current/20">
-              Sudah diberikan: <strong>{todayTotal}g</strong> + Sisa jadwal hari ini: <strong>{futureScheduleTotal}g</strong> = <strong>{projectedTotal}g</strong>
-              {combinedExceeded
-                ? <span className="font-bold"> — Gabungan melebihi target {Math.abs(combinedRemaining)}g!</span>
-                : <span> — Sisa kapasitas nyata: <strong>{Math.max(0, combinedRemaining)}g</strong></span>}
+              Manual hari ini: <strong>{todayManualTotal}g</strong>
+              {feedingAmount > 0 && <> + kirim: <strong>{feedingAmount}g</strong></>}
+              {' '}→ Sisa otomatis: <strong>{autoRemainingWithPending}g</strong>
+              {autoRemainingWithPending < scheduleTotal && (
+                <span className="font-bold"> (jadwal dikurangi proporsional)</span>
+              )}
             </p>
           )}
         </div>
@@ -739,33 +698,6 @@ export function FeedingControl() {
         </button>
       </div>
 
-      {/* ── MULTI-DEVICE MONITOR ── */}
-      <div>
-        <div className="flex items-center gap-3 mb-4">
-          <div className="w-10 h-10 bg-indigo-50 rounded-2xl flex items-center justify-center">
-            <Cpu className="w-5 h-5 text-indigo-500" />
-          </div>
-          <div>
-            <h3 className="text-xl font-black text-gray-900">Monitoring Perangkat</h3>
-            <p className="text-sm text-gray-400">Pilih perangkat untuk pemberian manual</p>
-          </div>
-        </div>
-        <div className="flex gap-4">
-          <DeviceMonitorCard
-            device={primaryDevice}
-            deviceNumber={1}
-            isSelected={selectedDeviceId === device1Id}
-            onSelect={() => setSelectedDeviceId(device1Id)}
-          />
-          <DeviceMonitorCard
-            device={secondaryDevice}
-            deviceNumber={2}
-            isSelected={selectedDeviceId === device2Id}
-            onSelect={() => setSelectedDeviceId(device2Id)}
-          />
-        </div>
-      </div>
-
       {/* ── TWO CARDS ── */}
       <div className="flex-1 grid grid-cols-1 xl:grid-cols-2 gap-5 md:gap-8">
 
@@ -811,6 +743,32 @@ export function FeedingControl() {
               ))}
             </div>
           </div>
+
+          {/* Food stock indicator */}
+          {selectedDevice && (() => {
+            const stockPct = selectedDevice.foodStockLevel ?? 0;
+            const theme = getFoodStockTheme(stockPct);
+            return (
+              <div className={cn('relative z-10 flex items-center gap-3 px-4 py-3 rounded-2xl border', theme.bg, theme.border)}>
+                <Database className={cn('w-4 h-4 shrink-0', theme.text)} />
+                <div className="flex-1 min-w-0">
+                  <div className="flex justify-between items-center mb-1">
+                    <span className={cn('text-xs font-bold', theme.text)}>Stok pakan {selectedDevice.name ?? 'feeder'}</span>
+                    <span className={cn('text-sm font-black', theme.text)}>{stockPct}%</span>
+                  </div>
+                  <div className="h-1.5 bg-white/60 rounded-full overflow-hidden">
+                    <motion.div
+                      initial={{ width: 0 }}
+                      animate={{ width: `${Math.min(stockPct, 100)}%` }}
+                      transition={{ duration: 0.7 }}
+                      className={cn('h-full rounded-full', theme.bar)}
+                    />
+                  </div>
+                </div>
+                <span className="text-base shrink-0">{theme.dot}</span>
+              </div>
+            );
+          })()}
 
           {/* Today progress */}
           {dailyTarget > 0 && (
@@ -921,16 +879,57 @@ export function FeedingControl() {
 
           {/* CTA */}
           <div className="relative z-10 space-y-3">
+
+            {/* ── LOADING STATE ── */}
+            {isFeeding && (
+              <motion.div
+                initial={{ opacity: 0, scale: 0.97 }}
+                animate={{ opacity: 1, scale: 1 }}
+                className={cn(
+                  'flex flex-col items-center justify-center gap-3 px-5 py-7 border-2 rounded-3xl',
+                  feedPhase === 'waiting'
+                    ? 'bg-blue-50 border-blue-200'
+                    : 'bg-amber-50 border-amber-200'
+                )}
+              >
+                <div className="relative">
+                  <div className={cn(
+                    'w-14 h-14 rounded-full border-4 animate-spin',
+                    feedPhase === 'waiting'
+                      ? 'border-blue-200 border-t-blue-500'
+                      : 'border-amber-200 border-t-amber-500'
+                  )} />
+                  <Utensils className={cn(
+                    'absolute inset-0 m-auto w-5 h-5',
+                    feedPhase === 'waiting' ? 'text-blue-400' : 'text-amber-400'
+                  )} />
+                </div>
+                <div className="text-center">
+                  {feedPhase === 'waiting' ? (
+                    <>
+                      <p className="font-black text-blue-800 text-base">Menunggu pakan tertuang...</p>
+                      <p className="text-sm text-blue-500 mt-0.5">Memverifikasi berat mangkuk (maks 30 detik)</p>
+                    </>
+                  ) : (
+                    <>
+                      <p className="font-black text-amber-800 text-base">Mengirim {feedingAmount}g...</p>
+                      <p className="text-sm text-amber-500 mt-0.5">Tunggu, perintah sedang dikirim ke perangkat</p>
+                    </>
+                  )}
+                </div>
+              </motion.div>
+            )}
+
+            {/* ── CONFIRM DIALOG ── */}
             {showConfirm && !isFeeding && (
-              <div className="px-5 py-4 bg-amber-50 border border-amber-200 rounded-2xl space-y-3">
+              <motion.div
+                initial={{ opacity: 0, y: 6 }}
+                animate={{ opacity: 1, y: 0 }}
+                className="px-5 py-4 bg-amber-50 border border-amber-200 rounded-2xl space-y-3"
+              >
                 <p className="text-base font-black text-amber-800">
                   Konfirmasi: kirim {feedingAmount}g ke {selectedDevice?.name ?? `Feeder ESP ${selectedDeviceId === device2Id ? 2 : 1}`}?
                 </p>
-                {wouldExceed && (
-                  <p className="text-xs text-orange-600 font-semibold">
-                    ⚠ Porsi ini melebihi sisa kapasitas harian. Lanjutkan?
-                  </p>
-                )}
                 <div className="flex gap-3">
                   <button
                     type="button"
@@ -942,49 +941,89 @@ export function FeedingControl() {
                   <button
                     type="button"
                     onClick={handleManualFeed}
+                    disabled={isFeeding}
                     className="flex-1 py-2.5 rounded-2xl bg-amber-400 hover:bg-amber-500 text-white text-sm font-black transition-colors flex items-center justify-center gap-2"
                   >
                     <Utensils className="w-4 h-4" /> Ya, Kirim
                   </button>
                 </div>
-              </div>
+              </motion.div>
             )}
 
-            {!showConfirm && (
+            {/* ── MAIN BUTTON ── */}
+            {!showConfirm && !isFeeding && (
               <button
                 type="button"
                 onClick={() => {
-                  if (isAtDailyLimit) return;
+                  if (isAtDailyLimit || wouldExceed) return;
                   setShowConfirm(true);
                 }}
-                disabled={isFeeding || isAtDailyLimit}
+                disabled={isAtDailyLimit || wouldExceed}
                 className={cn(
-                  'w-full py-5 rounded-3xl font-black text-xl flex items-center justify-center gap-3 transition-all',
-                  isFeeding
+                  'w-full py-5 rounded-3xl font-black text-lg md:text-xl flex items-center justify-center gap-3 transition-all',
+                  isAtDailyLimit
                     ? 'bg-gray-100 text-gray-400 cursor-not-allowed'
-                    : isAtDailyLimit
-                    ? 'bg-gray-100 text-gray-300 cursor-not-allowed'
-                    : 'bg-amber-400 hover:bg-amber-500 text-white shadow-lg shadow-amber-200'
+                    : wouldExceed
+                    ? 'bg-red-100 text-red-400 cursor-not-allowed border-2 border-red-200'
+                    : 'bg-amber-400 hover:bg-amber-500 active:scale-95 text-white shadow-lg shadow-amber-200'
                 )}
               >
-                {isFeeding
-                  ? <><Loader2 className="w-6 h-6 animate-spin" /> Mengirim...</>
-                  : <><Utensils className="w-6 h-6" /> Beri Makan Sekarang</>}
+                {isAtDailyLimit ? (
+                  <><BanIcon className="w-6 h-6 shrink-0" /> Batas harian tercapai</>
+                ) : wouldExceed ? (
+                  <><AlertTriangle className="w-6 h-6 shrink-0" /> Kurangi porsi agar tidak berlebih</>
+                ) : (
+                  <><Utensils className="w-6 h-6 shrink-0" /> Beri Makan Sekarang</>
+                )}
               </button>
             )}
 
-            {feedResult && (
-              <div className={cn(
-                'flex items-center gap-3 px-5 py-4 rounded-2xl text-base font-semibold',
-                feedResult === 'success' ? 'bg-green-50 text-green-700' : 'bg-red-50 text-red-700'
-              )}>
-                {feedResult === 'success'
-                  ? <CheckCircle2 className="w-5 h-5 shrink-0" />
-                  : <XCircle className="w-5 h-5 shrink-0" />}
-                {feedResult === 'success'
-                  ? 'Berhasil dikirim ke perangkat!'
-                  : 'Gagal mengirim. Periksa koneksi perangkat.'}
-              </div>
+            {/* ── RESULT NOTIFICATION ── */}
+            {feedResult && !isFeeding && (
+              <motion.div
+                initial={{ opacity: 0, y: 8 }}
+                animate={{ opacity: 1, y: 0 }}
+                className={cn(
+                  'flex items-start gap-3 px-5 py-4 rounded-2xl text-base font-semibold border-2',
+                  feedResult === 'success'
+                    ? 'bg-green-50 border-green-300 text-green-700'
+                    : feedResult === 'timeout'
+                    ? 'bg-yellow-50 border-yellow-300 text-yellow-700'
+                    : 'bg-red-50 border-red-200 text-red-700'
+                )}
+              >
+                {feedResult === 'success' ? (
+                  <CheckCircle2 className="w-6 h-6 shrink-0 mt-0.5 text-green-500" />
+                ) : feedResult === 'timeout' ? (
+                  <AlertTriangle className="w-6 h-6 shrink-0 mt-0.5 text-yellow-500" />
+                ) : (
+                  <XCircle className="w-6 h-6 shrink-0 mt-0.5 text-red-400" />
+                )}
+                <div>
+                  {feedResult === 'success' ? (
+                    <>
+                      <p className="font-black text-green-800">✅ Pakan berhasil diterima!</p>
+                      <p className="text-sm font-medium mt-1 text-green-600">
+                        <span className="font-black text-green-700">{lastFedAmount}g</span> terdeteksi masuk ke mangkuk{' '}
+                        <span className="font-black">{selectedDevice?.name ?? `Feeder ESP ${selectedDeviceId === devices[1]?.id ? 2 : 1}`}</span>.
+                      </p>
+                    </>
+                  ) : feedResult === 'timeout' ? (
+                    <>
+                      <p className="font-black text-yellow-800">⏳ Perintah terkirim, menunggu konfirmasi</p>
+                      <p className="text-sm font-medium mt-1 text-yellow-600">
+                        Perintah {lastFedAmount}g sudah dikirim ke perangkat, namun berat mangkuk belum terdeteksi bertambah.
+                        Periksa perangkat atau coba lagi.
+                      </p>
+                    </>
+                  ) : (
+                    <>
+                      <p className="font-black">Gagal mengirim pakan</p>
+                      <p className="text-sm font-medium mt-0.5">Periksa koneksi perangkat dan coba lagi.</p>
+                    </>
+                  )}
+                </div>
+              </motion.div>
             )}
           </div>
         </div>
@@ -1062,7 +1101,7 @@ export function FeedingControl() {
                 >
                   <p className="font-black text-blue-800 text-base">Edit Slot</p>
                   <div className="flex gap-4">
-                    <div className="flex-1">
+                    <div className="w-full">
                       <label className="text-xs font-bold text-gray-500 uppercase tracking-widest block mb-1">
                         Waktu
                       </label>
@@ -1075,24 +1114,8 @@ export function FeedingControl() {
                         className="w-full border border-gray-200 rounded-xl px-4 py-2 text-base font-bold focus:outline-none focus:ring-2 focus:ring-blue-300"
                       />
                     </div>
-                    <div className="flex-1">
-                      <label className="text-xs font-bold text-gray-500 uppercase tracking-widest block mb-1">
-                        Porsi (g)
-                      </label>
-                      <input
-                        id="edit-amount"
-                        type="number"
-                        min={5}
-                        max={500}
-                        step={5}
-                        value={editAmount}
-                        onChange={(e) => setEditAmount(parseInt(e.target.value, 10))}
-                        title="Porsi dalam gram"
-                        placeholder="50"
-                        className="w-full border border-gray-200 rounded-xl px-4 py-2 text-base font-bold focus:outline-none focus:ring-2 focus:ring-blue-300"
-                      />
-                    </div>
                   </div>
+                  <p className="text-xs text-gray-400">Porsi: <span className="font-bold text-gray-600">{schedule[editingIndex ?? 0]?.amount ?? editAmount}g</span> (tidak dapat diubah dari sini)</p>
                   {editError && <p className="text-xs text-red-600 font-semibold">{editError}</p>}
                   <div className="flex gap-3 justify-end">
                     <button

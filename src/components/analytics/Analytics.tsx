@@ -351,7 +351,7 @@ export function Analytics() {
         <div>
           <h2 className="text-3xl font-black text-gray-900 mb-1 flex items-center gap-3">
             <BarChart3 className="w-8 h-8 text-amber-500" />
-            Analitik Kesehatan
+            Analitik Pemberian Pakan
           </h2>
           <p className="text-gray-400">Pola konsumsi dan efisiensi perangkat 7 hari terakhir.</p>
         </div>
