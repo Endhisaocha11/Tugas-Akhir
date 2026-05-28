@@ -815,50 +815,91 @@ export default function OnboardingFlow({
                         Usia Kucing
                       </label>
 
-                      <div className="px-4 py-2 rounded-2xl bg-amber-50 border border-amber-100 text-amber-800 font-black">
-                        📅 {form.age} Tahun
+                      <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-2xl bg-amber-50 border border-amber-200">
+                        <span>📅</span>
+                        <input
+                          type="number"
+                          aria-label="Usia kucing (tahun)"
+                          min="0.3"
+                          max="15"
+                          step="0.1"
+                          value={form.age}
+                          onChange={(e) => {
+                            const v = parseFloat(e.target.value);
+                            if (!isNaN(v)) upd({ age: Math.min(15, Math.max(0.3, v)) });
+                          }}
+                          className="w-14 text-center font-black text-amber-800 bg-transparent outline-none border-b border-amber-300 focus:border-amber-600"
+                        />
+                        <span className="font-black text-amber-800 text-sm">Thn</span>
                       </div>
                     </div>
 
-                    <input
-                      aria-label="Berapa umur kucingmu?"
-                      type="range"
-                      min="0.3"
-                      max="15"
-                      step="0.1"
-                      value={form.age}
-                      onChange={(e: ChangeEvent<HTMLInputElement>) =>
-                        upd({ age: Number(e.target.value) })
-                      }
-                      className="cat-slider"
-                    />
+                    <div className="relative">
+                      <input
+                        aria-label="Berapa umur kucingmu?"
+                        type="range"
+                        min="0.3"
+                        max="15"
+                        step="0.1"
+                        value={form.age}
+                        onChange={(e: ChangeEvent<HTMLInputElement>) =>
+                          upd({ age: Number(e.target.value) })
+                        }
+                        className="cat-slider"
+                      />
+                      {/* Tick marks — satu titik per tahun, tanda batas kategori lebih besar */}
+                      <div className="relative mt-2 h-5">
+                        {[1,2,3,4,5,6,7,8,9,10,11,12,13,14,15].map((y) => {
+                          const pct = ((y - 0.3) / (15 - 0.3)) * 100;
+                          const isBoundary = y === 1 || y === 7;
+                          return (
+                            <div
+                              key={y}
+                              className="absolute flex flex-col items-center"
+                              style={{ left: `${pct}%`, transform: 'translateX(-50%)' }}
+                            >
+                              <div className={cn(
+                                'rounded-full',
+                                isBoundary ? 'w-1 h-3 bg-amber-400' : 'w-0.5 h-2 bg-gray-300'
+                              )} />
+                              {isBoundary && (
+                                <span className="text-[9px] font-black text-amber-500 mt-0.5 whitespace-nowrap">
+                                  {y}y
+                                </span>
+                              )}
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </div>
 
-                    <div className="grid grid-cols-3 gap-4 mt-6">
-
+                    <div className="grid grid-cols-3 gap-3 mt-5">
                       {[
-                        { label: "Kitten", sub: "4-12 bulan" },
-                        { label: "Adult", sub: "1-7 tahun" },
-                        { label: "Senior", sub: ">7 tahun" },
-                      ].map(({ label, sub }) => (
-
-                        <div
-                          key={label}
-                          className={cn(
-                            "rounded-2xl p-4 text-center border-2 transition-all",
-                            ageCategory.label === label
-                              ? "bg-amber-700 border-amber-700 text-white"
-                              : "bg-gray-50 border-gray-100 text-gray-400"
-                          )}
-                        >
-                          <p className="font-black text-lg">
-                            {label}
-                          </p>
-
-                          <p className="text-sm opacity-80 mt-1">
-                            {sub}
-                          </p>
-                        </div>
-                      ))}
+                        { label: "Kitten", sub: "4-12 bulan", jumpTo: 0.7, emoji: "🐱" },
+                        { label: "Adult",  sub: "1-7 tahun",  jumpTo: 4,   emoji: "🐈" },
+                        { label: "Senior", sub: ">7 tahun",   jumpTo: 11,  emoji: "🐾" },
+                      ].map(({ label, sub, jumpTo, emoji }) => {
+                        const isActive = ageCategory.label === label;
+                        return (
+                          <button
+                            key={label}
+                            type="button"
+                            onClick={() => upd({ age: jumpTo })}
+                            className={cn(
+                              "rounded-2xl p-4 text-center border-2 transition-all cursor-pointer select-none",
+                              isActive
+                                ? "bg-amber-700 border-amber-700 text-white shadow-md shadow-amber-200 scale-105"
+                                : "bg-white border-gray-200 text-gray-500 hover:border-amber-300 hover:text-amber-700 hover:bg-amber-50 active:scale-95"
+                            )}
+                          >
+                            <p className="text-xl mb-1">{emoji}</p>
+                            <p className="font-black text-base">{label}</p>
+                            <p className={cn("text-xs mt-0.5", isActive ? "text-amber-200" : "text-gray-400")}>
+                              {sub}
+                            </p>
+                          </button>
+                        );
+                      })}
                     </div>
                   </div>
 
@@ -872,11 +913,23 @@ export default function OnboardingFlow({
                       </label>
 
                       <div className="flex items-end gap-2">
-                        <span className="text-5xl font-black text-amber-900">
-                          {form.weight}
-                        </span>
-
-                        <span className="text-xl font-bold text-gray-400 mb-1">
+                        <input
+                          type="number"
+                          aria-label="Berat badan kucing (kg)"
+                          min="0.5"
+                          max="15"
+                          step="0.1"
+                          value={form.weight}
+                          onChange={(e) => {
+                            const newWeight = parseFloat(e.target.value);
+                            if (!isNaN(newWeight)) {
+                              const clamped = Math.min(15, Math.max(0.5, newWeight));
+                              upd({ weight: clamped, bodyCondition: getAutoBodyCondition(clamped) });
+                            }
+                          }}
+                          className="text-5xl font-black text-amber-900 bg-transparent outline-none border-b-2 border-amber-200 focus:border-amber-500 w-28 text-right"
+                        />
+                        <span className="text-xl font-bold text-gray-400 mb-2">
                           KG
                         </span>
                       </div>
