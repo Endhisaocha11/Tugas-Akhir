@@ -528,7 +528,7 @@ export function DeviceSettings() {
                 <p className="text-sm text-red-600 mt-1">
                   Perangkat <strong>{devices[0]?.name ?? devices[0]?.id ?? '—'}</strong> akan dilepas dari akun kamu.
                   Kamu akan diarahkan ke halaman <strong>Klaim Perangkat</strong> untuk memilih feeder baru.
-                  Profil kucing perlu diatur ulang setelahnya.
+                  Profil kucing dan jadwal pakan tetap tersimpan.
                 </p>
               </div>
             </div>

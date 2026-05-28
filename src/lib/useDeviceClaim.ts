@@ -70,8 +70,7 @@ export async function releaseDevice(deviceId: string, userId: string): Promise<v
     });
 
     transaction.update(userRef, {
-      claimedDeviceId:     null,
-      onboardingCompleted: false,
+      claimedDeviceId: null,
     });
   });
 }
