@@ -331,7 +331,7 @@ function AppContent() {
         return <Education />;
 
       case 'notifications':
-        return <Notifications />;
+        return <Notifications onNavigate={setCurrentTab} />;
 
       case 'onboarding-flow':
         if (!isAdmin) return <AccessDenied msg="Hanya admin yang dapat mengubah data feeder." />;

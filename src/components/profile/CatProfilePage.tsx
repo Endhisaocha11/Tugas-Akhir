@@ -379,8 +379,16 @@ export function CatProfilePage() {
     currentSnapshot,
   ];
 
+  // Isi endedAt yang kosong menggunakan savedAt profil berikutnya,
+  // agar log lama tidak merembet ke periode profil setelahnya
+  const allProfilesResolved = allProfiles.map((snap, idx) => {
+    if (snap.endedAt !== undefined) return snap;
+    const next = allProfiles[idx + 1];
+    return next ? { ...snap, endedAt: next.savedAt } : snap;
+  });
+
   // Untuk display: terbaru di atas, dengan index asli agar nomor urut (#1, #2, …) tetap konsisten
-  const filteredWithIndex = allProfiles
+  const filteredWithIndex = allProfilesResolved
     .map((snap, idx) => ({ snap, idx }))
     .filter(({ snap }) =>
       snap.name.toLowerCase().includes(searchQuery.toLowerCase().trim())
@@ -637,7 +645,7 @@ export function CatProfilePage() {
           <div>
             <h3 className="text-2xl font-black text-gray-900">Riwayat Profil Kucing</h3>
             <p className="text-sm text-gray-400 mt-0.5">
-              {allProfiles.length} profil tercatat — terbaru ditampilkan di atas
+              {allProfilesResolved.length} profil tercatat — terbaru ditampilkan di atas
             </p>
           </div>
           <div className="relative">

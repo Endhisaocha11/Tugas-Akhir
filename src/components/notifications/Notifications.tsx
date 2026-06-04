@@ -19,6 +19,7 @@ interface NotifItem {
   body: string;
   time: string;
   priority: number;
+  route?: string;
 }
 
 // ── Config ────────────────────────────────────────────────────────────────────
@@ -77,7 +78,7 @@ function getTriggerType(notes?: string): 'manual' | 'auto' | null {
 
 // ── Main Component ────────────────────────────────────────────────────────────
 
-export function Notifications() {
+export function Notifications({ onNavigate }: { onNavigate?: (tab: string) => void }) {
   const { cat, device, feedingLogs, loading } = useCatData();
 
   if (loading) {
@@ -94,72 +95,60 @@ export function Notifications() {
   if (device) {
     if (!device.isOnline) {
       notifs.push({
-        id: 'dev-offline',
-        type: 'error',
-        source: 'device',
+        id: 'dev-offline', type: 'error', source: 'device', priority: 0,
         title: 'Perangkat Offline',
         body: 'PawfectCare tidak terhubung ke internet. Periksa koneksi Wi-Fi perangkat Anda.',
         time: device.lastPulse ? formatTime(device.lastPulse) : '—',
-        priority: 0,
+        route: 'settings',
       });
     }
 
     if (device.foodStockLevel < 20) {
       notifs.push({
-        id: 'low-stock',
-        type: 'warning',
-        source: 'device',
+        id: 'low-stock', type: 'warning', source: 'device', priority: 1,
         title: 'Stok Makanan Hampir Habis',
         body: `Sisa stok pakan hanya ${device.foodStockLevel}%. Segera isi ulang wadah sebelum kehabisan.`,
         time: 'Sekarang',
-        priority: 1,
+        route: 'settings',
       });
     }
 
     if (device.servoStatus === 'jammed') {
       notifs.push({
-        id: 'servo-jammed',
-        type: 'error',
-        source: 'device',
+        id: 'servo-jammed', type: 'error', source: 'device', priority: 0,
         title: 'Servo Macet',
         body: 'Mekanisme dispenser mengalami hambatan mekanis. Periksa kondisi fisik perangkat dan bersihkan dari sumbatan.',
         time: 'Sekarang',
-        priority: 0,
+        route: 'settings',
       });
     }
 
     if (device.isOnline && device.servoStatus === 'idle' && device.foodStockLevel >= 20) {
       notifs.push({
-        id: 'dev-ready',
-        type: 'success',
-        source: 'device',
+        id: 'dev-ready', type: 'success', source: 'device', priority: 3,
         title: 'Perangkat Siap Digunakan',
         body: `PawfectCare aktif dan siaga. Stok pakan ${device.foodStockLevel}%. Servo dalam kondisi baik.`,
         time: device.lastPulse ? formatTime(device.lastPulse) : 'Sekarang',
-        priority: 3,
+        route: 'settings',
       });
     }
 
     if (device.isOnline && device.servoStatus === 'active') {
       notifs.push({
-        id: 'dev-active',
-        type: 'info',
-        source: 'device',
+        id: 'dev-active', type: 'info', source: 'device', priority: 2,
         title: 'Perangkat Sedang Aktif',
         body: 'PawfectCare sedang mendispens pakan. Berat mangkok saat ini: ' + device.currentWeightOnScale + 'g.',
         time: 'Sekarang',
-        priority: 2,
+        route: 'feeding-control',
       });
     }
   } else {
     notifs.push({
-      id: 'no-device',
-      type: 'info',
-      source: 'device',
+      id: 'no-device', type: 'info', source: 'device', priority: 2,
       title: 'Perangkat Belum Terhubung',
       body: 'Belum ada data perangkat. Admin perlu menghubungkan PawfectCare ke sistem terlebih dahulu.',
       time: 'Sekarang',
-      priority: 2,
+      route: 'settings',
     });
   }
 
@@ -169,47 +158,38 @@ export function Notifications() {
 
     if (bc >= 7) {
       notifs.push({
-        id: 'cat-overweight',
-        type: 'warning',
-        source: 'health',
+        id: 'cat-overweight', type: 'warning', source: 'health', priority: 1,
         title: `${cat.name} — Kelebihan Berat Badan`,
         body: `BCS ${bc}/9 (${bc >= 9 ? 'Obesitas' : 'Overweight'}). Feeding harian dikurangi otomatis 15%. Konsultasikan ke dokter hewan untuk diet yang tepat.`,
         time: 'Data terkini',
-        priority: 1,
+        route: 'cat-profile',
       });
     } else if (bc <= 2) {
       notifs.push({
-        id: 'cat-underweight',
-        type: 'warning',
-        source: 'health',
+        id: 'cat-underweight', type: 'warning', source: 'health', priority: 1,
         title: `${cat.name} — Kekurangan Berat Badan`,
         body: `BCS ${bc}/9 (Sangat Kurus). Feeding harian ditingkatkan. Segera konsultasikan ke dokter hewan.`,
         time: 'Data terkini',
-        priority: 1,
+        route: 'cat-profile',
       });
     } else {
       notifs.push({
-        id: 'cat-healthy',
-        type: 'success',
-        source: 'health',
+        id: 'cat-healthy', type: 'success', source: 'health', priority: 4,
         title: `${cat.name} — Kondisi Tubuh Normal`,
         body: `BCS ${bc}/9. Berat badan dalam rentang ideal. Tetap pantau kondisi tubuh secara berkala.`,
         time: 'Data terkini',
-        priority: 4,
+        route: 'cat-profile',
       });
     }
 
-    // Profile updated notification — gunakan profileUpdatedAt (number) yang lebih reliable
     const profileUpdatedAt = (cat as any).profileUpdatedAt as number | undefined;
     if (profileUpdatedAt && Date.now() - profileUpdatedAt < 7 * 86_400_000) {
       notifs.push({
-        id: 'profile-updated',
-        type: 'info',
-        source: 'profile',
+        id: 'profile-updated', type: 'info', source: 'profile', priority: 2,
         title: 'Profil Kucing Diperbarui',
-        body: `Profil ${cat.name} diperbarui pada ${new Date(profileUpdatedAt).toLocaleDateString('id-ID', { day: 'numeric', month: 'short', year: 'numeric' })}. Target feeding baru: ${cat.dailyGramTarget}g/hari. Data analitik dashboard otomatis direset — hanya menghitung log sejak profil ini disimpan.`,
+        body: `Profil ${cat.name} diperbarui pada ${new Date(profileUpdatedAt).toLocaleDateString('id-ID', { day: 'numeric', month: 'short', year: 'numeric' })}. Target feeding baru: ${cat.dailyGramTarget}g/hari. Data analitik direset sejak profil ini disimpan.`,
         time: formatTime(profileUpdatedAt),
-        priority: 2,
+        route: 'cat-profile',
       });
     }
   }
@@ -219,21 +199,18 @@ export function Notifications() {
     const trigger = getTriggerType(log.notes);
     const isOverfed = log.amountDispensed > log.amountRequested * 1.1;
 
-    // Overfeeding alert takes priority
     if (isOverfed && log.status !== 'failed') {
       notifs.push({
-        id: `overfed-${log.id}`,
-        type: 'error',
-        source: 'overfeeding',
+        id: `overfed-${log.id}`, type: 'error', source: 'overfeeding', priority: 0,
         title: 'Pakan Diberikan Berlebihan',
         body: `Diberikan ${log.amountDispensed}g, target hanya ${log.amountRequested}g (lebih ${log.amountDispensed - log.amountRequested}g). Periksa kalibrasi timbangan.`,
         time: formatTime(log.timestamp),
-        priority: 0,
+        route: 'history',
       });
       return;
     }
 
-    const source: NotifSource = trigger === 'manual' ? 'manual' : trigger === 'auto' ? 'auto' : 'auto';
+    const source: NotifSource = trigger === 'manual' ? 'manual' : 'auto';
 
     const title =
       log.status === 'success'
@@ -252,11 +229,10 @@ export function Notifications() {
     notifs.push({
       id: log.id,
       type: log.status === 'success' ? 'success' : log.status === 'warning' ? 'warning' : 'error',
-      source,
-      title,
-      body,
+      source, title, body,
       time: formatTime(log.timestamp),
       priority: log.status === 'success' ? 4 : log.status === 'warning' ? 2 : 1,
+      route: trigger === 'manual' ? 'feeding-control' : 'history',
     });
   });
 
@@ -369,35 +345,48 @@ export function Notifications() {
                 const cfg = TYPE_CONFIG[notif.type];
                 const Icon = cfg.icon;
 
-                return (
-                  <div
-                    key={notif.id}
-                    className={cn(
-                      'bg-white rounded-2xl border p-4 flex items-start gap-4',
-                      cfg.border
-                    )}
-                  >
-                    {/* Type icon */}
+                const isClickable = !!notif.route && !!onNavigate;
+                const cardClass = cn(
+                  'w-full text-left bg-white rounded-2xl border p-4 flex items-start gap-4 transition-all',
+                  cfg.border,
+                  isClickable && 'cursor-pointer hover:shadow-md hover:scale-[1.01] active:scale-[0.99]'
+                );
+                const cardContent = (
+                  <>
                     <div className={cn('w-9 h-9 rounded-xl flex items-center justify-center shrink-0 mt-0.5', cfg.iconBg)}>
                       <Icon className={cn('w-4.5 h-4.5', cfg.iconColor)} />
                     </div>
-
-                    {/* Content */}
                     <div className="flex-1 min-w-0">
                       <div className="flex items-start justify-between gap-2 flex-wrap">
                         <p className={cn('font-black text-sm', cfg.iconColor)}>{notif.title}</p>
                         <span className="text-xs text-gray-400 shrink-0">{notif.time}</span>
                       </div>
                       <p className="text-xs text-gray-500 mt-1 leading-relaxed">{notif.body}</p>
-
-                      {/* Source badge */}
-                      <div className="mt-2">
+                      <div className="mt-2 flex items-center gap-2 flex-wrap">
                         <span className={cn('inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-black', srcCfg.bg, srcCfg.text)}>
                           <SrcIcon className="w-2.5 h-2.5" />
                           {srcCfg.label}
                         </span>
+                        {isClickable && (
+                          <span className="text-[10px] text-gray-400 font-medium">Ketuk untuk lihat →</span>
+                        )}
                       </div>
                     </div>
+                  </>
+                );
+
+                return isClickable ? (
+                  <button
+                    key={notif.id}
+                    type="button"
+                    onClick={() => onNavigate!(notif.route!)}
+                    className={cardClass}
+                  >
+                    {cardContent}
+                  </button>
+                ) : (
+                  <div key={notif.id} className={cardClass}>
+                    {cardContent}
                   </div>
                 );
               })}

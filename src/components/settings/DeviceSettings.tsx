@@ -7,7 +7,8 @@ import {
 } from 'lucide-react';
 import { motion } from 'motion/react';
 import { doc, updateDoc } from 'firebase/firestore';
-import { db } from '../../lib/firebase';
+import { ref, set } from 'firebase/database';
+import { db, rtdb } from '../../lib/firebase';
 import { useCatData } from '../../lib/useCatData';
 import { useDevice } from '../../lib/DeviceContext';
 import { useAuth } from '../../lib/AuthContext';
@@ -150,7 +151,12 @@ export function DeviceSettings() {
   const handleSaveCalibration = async () => {
     setSavingCalib(true);
     try {
-      await updateDoc(deviceDocRef, { calibrationFactor });
+      // RTDB dulu — ESP32 baca dari sini via readCalibrationFromRTDB()
+      if (rtdb && device?.id) {
+        await set(ref(rtdb, `devices/${device.id}/calibration/loadCellFactor`), calibrationFactor);
+      }
+      // Firestore untuk persistensi (tidak memblokir jika gagal)
+      updateDoc(deviceDocRef, { calibrationFactor }).catch(console.error);
       setCalibSaved(true);
       setTimeout(() => setCalibSaved(false), 3000);
     } catch (err) {
@@ -178,10 +184,16 @@ export function DeviceSettings() {
   };
 
   const handleTestServo = async () => {
+    if (!rtdb || !device?.id) return;
     setTestingServo(true);
     try {
-      await updateDoc(deviceDocRef, { command: 'test_servo' });
-      setTimeout(() => setTestingServo(false), 3000);
+      // Tulis langsung ke RTDB — satu-satunya channel yang dibaca Arduino
+      await set(ref(rtdb, `devices/${device.id}/command`), {
+        type: 'test_servo',
+        status: 'pending',
+        requestedAt: Date.now(),
+      });
+      setTimeout(() => setTestingServo(false), 5000);
     } catch {
       setTestingServo(false);
     }
@@ -359,18 +371,21 @@ export function DeviceSettings() {
               <input
                 type="number"
                 value={calibrationFactor}
-                step={0.001}
-                min={0.1}
-                max={10}
+                step={1}
+                min={1}
+                max={100000}
                 title="Faktor kalibrasi load cell"
                 aria-label="Faktor kalibrasi load cell"
-                placeholder="1.000"
+                placeholder="2280"
                 onChange={(e) => setCalibrationFactor(parseFloat(e.target.value) || 1)}
                 className="flex-1 text-3xl font-black text-gray-900 border border-gray-200 rounded-2xl px-4 py-3 focus:outline-none focus:ring-2 focus:ring-amber-300"
               />
             </div>
             <p className="text-xs text-gray-400">
-              Nilai ini dibaca ESP32 dari Firestore saat startup. Ubah jika timbangan tidak akurat.
+              Disimpan ke RTDB path{' '}
+              <code className="font-black">devices/&#123;ID&#125;/calibration/loadCellFactor</code>.
+              ESP32 membacanya via <code className="font-black">readCalibrationFromRTDB()</code>.
+              Default firmware: <span className="font-bold text-gray-600">2280</span>.
             </p>
             <button
               type="button"
@@ -394,17 +409,37 @@ export function DeviceSettings() {
           {/* Servo test */}
           <div className="bg-white border border-gray-100 rounded-3xl p-6 space-y-4 shadow-sm">
             <p className="text-xs font-black uppercase tracking-widest text-gray-400">Uji Servo</p>
-            <div className="flex items-center gap-2 mt-2">
-              <span className="text-3xl font-black text-gray-900">0°</span>
-              <div className="flex-1 flex gap-1 h-3">
-                {Array.from({ length: 12 }).map((_, i) => (
-                  <div key={i} className={cn('flex-1 rounded-full', i < 9 ? 'bg-amber-400' : 'bg-gray-100')} />
-                ))}
+
+            {/* Servo range visual — MAX_SERVO_ANGLE = 35° */}
+            <div className="space-y-1.5">
+              <div className="flex items-center gap-2">
+                <span className="text-2xl font-black text-gray-900 shrink-0">0°</span>
+                <div className="flex-1 flex gap-1 h-3">
+                  {Array.from({ length: 7 }).map((_, i) => (
+                    <div
+                      key={i}
+                      className={cn(
+                        'flex-1 rounded-full transition-all',
+                        testingServo ? 'bg-amber-400 animate-pulse' : 'bg-amber-400'
+                      )}
+                    />
+                  ))}
+                  {Array.from({ length: 5 }).map((_, i) => (
+                    <div key={i + 7} className="flex-1 rounded-full bg-gray-100" />
+                  ))}
+                </div>
+                <span className="text-2xl font-black text-amber-500 shrink-0">35°</span>
               </div>
-              <span className="text-3xl font-black text-gray-900">180°</span>
+              <p className="text-[10px] text-gray-400 text-center">
+                Range aktual: 0° → <span className="font-bold text-amber-600">35°</span>{' '}
+                (<code className="font-black">MAX_SERVO_ANGLE = 35</code>)
+              </p>
             </div>
+
             <p className="text-xs text-gray-400">
-              Kirim perintah test ke ESP32 via Firestore (field <code className="font-black">command: "test_servo"</code>).
+              Kirim command ke RTDB{' '}
+              <code className="font-black">devices/&#123;ID&#125;/command</code>.
+              Servo bergerak 0° → 35° → 0° lalu status kembali <code className="font-black">idle</code>.
             </p>
             <button
               type="button"

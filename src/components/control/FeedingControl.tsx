@@ -138,7 +138,8 @@ export function FeedingControl() {
   const [smartFeedEnabled, setSmartFeedEnabled] = useState(true);
 
   // Manual feed
-  const [feedingAmount, setFeedingAmount] = useState(5);
+  const [feedingAmount, setFeedingAmount] = useState(1);
+  const [portionInputStr, setPortionInputStr] = useState('1');
   const [isFeeding, setIsFeeding] = useState(false);
   const [feedResult, setFeedResult] = useState<'success' | 'timeout' | 'error' | null>(null);
   const [feedPhase, setFeedPhase] = useState<'sending' | 'waiting'>('sending');
@@ -255,10 +256,11 @@ export function FeedingControl() {
   // Selected device object
   const selectedDevice = devices.find((d) => d.id === selectedDeviceId) ?? devices[0] ?? null;
 
-  // Usage history grouped by day (last 7 days)
+  // Usage history grouped by day — hanya log setelah profil terakhir diubah
+  const profileUpdatedAt = cat?.profileUpdatedAt ?? 0;
   const usageDays = useMemo(() => {
     const map = new Map<string, UsageDayData>();
-    feedingLogs.forEach((log) => {
+    feedingLogs.filter((log) => log.timestamp >= profileUpdatedAt).forEach((log) => {
       const d = new Date(log.timestamp);
       const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
       const existing = map.get(key) ?? { total: 0, count: 0, manual: 0, auto: 0, first: log.timestamp, last: log.timestamp };
@@ -274,7 +276,7 @@ export function FeedingControl() {
     return Array.from(map.entries())
       .sort(([a], [b]) => b.localeCompare(a))
       .slice(0, 7);
-  }, [feedingLogs]);
+  }, [feedingLogs, profileUpdatedAt]);
 
   // ── Write daily limit flag to Firestore when limit is hit ─────────────────
   // Guard: skip if profile was reset today (dailyLimitResetDate === today)
@@ -825,21 +827,43 @@ export function FeedingControl() {
                 <input
                   aria-label="Ukuran Porsi"
                   type="range"
-                  min="5"
+                  min="1"
                   max="200"
-                  step="5"
+                  step="1"
                   value={feedingAmount}
                   onChange={(e) => {
-                    setFeedingAmount(parseInt(e.target.value, 10));
+                    const val = parseInt(e.target.value, 10);
+                    setFeedingAmount(val);
+                    setPortionInputStr(String(val));
                     setShowConfirm(false);
                   }}
                   className="w-full accent-amber-500"
                 />
               </div>
-              <div className="shrink-0 min-w-30 text-right">
-                <p className="text-3xl md:text-5xl font-black text-amber-500 leading-none">
-                  {feedingAmount}<span className="text-xl md:text-2xl ml-1">g</span>
-                </p>
+              <div className="shrink-0 text-right flex items-baseline justify-end gap-0.5">
+                <input
+                  type="text"
+                  inputMode="numeric"
+                  pattern="[0-9]*"
+                  aria-label="Jumlah gram porsi"
+                  value={portionInputStr}
+                  onChange={(e) => {
+                    const raw = e.target.value.replace(/[^0-9]/g, '');
+                    setPortionInputStr(raw);
+                    setShowConfirm(false);
+                    if (raw === '' || raw === '0') return;
+                    const val = parseInt(raw, 10);
+                    if (!isNaN(val) && val <= 200) setFeedingAmount(val);
+                  }}
+                  onBlur={() => {
+                    const val = parseInt(portionInputStr, 10);
+                    const clamped = isNaN(val) || val < 1 ? 1 : Math.min(200, val);
+                    setFeedingAmount(clamped);
+                    setPortionInputStr(String(clamped));
+                  }}
+                  className="w-20 md:w-28 text-3xl md:text-5xl font-black text-amber-500 leading-none text-right bg-transparent border-b-2 border-amber-200 focus:border-amber-500 focus:outline-none"
+                />
+                <span className="text-xl md:text-2xl font-black text-amber-500 ml-1">g</span>
               </div>
             </div>
 
@@ -955,16 +979,18 @@ export function FeedingControl() {
               <button
                 type="button"
                 onClick={() => {
-                  if (isAtDailyLimit || wouldExceed) return;
+                  if (isAtDailyLimit || wouldExceed || feedingAmount < 1) return;
                   setShowConfirm(true);
                 }}
-                disabled={isAtDailyLimit || wouldExceed}
+                disabled={isAtDailyLimit || wouldExceed || feedingAmount < 1}
                 className={cn(
                   'w-full py-5 rounded-3xl font-black text-lg md:text-xl flex items-center justify-center gap-3 transition-all',
                   isAtDailyLimit
                     ? 'bg-gray-100 text-gray-400 cursor-not-allowed'
                     : wouldExceed
                     ? 'bg-red-100 text-red-400 cursor-not-allowed border-2 border-red-200'
+                    : feedingAmount < 1
+                    ? 'bg-gray-100 text-gray-400 cursor-not-allowed'
                     : 'bg-amber-400 hover:bg-amber-500 active:scale-95 text-white shadow-lg shadow-amber-200'
                 )}
               >

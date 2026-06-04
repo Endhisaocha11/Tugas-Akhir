@@ -24,8 +24,11 @@ export function FeedingHistory() {
   const todayStart = new Date();
   todayStart.setHours(0, 0, 0, 0);
 
+  const profileUpdatedAt = cat?.profileUpdatedAt ?? 0;
+
   const rows = feedingLogs
     .filter((log) => {
+      if (log.timestamp < profileUpdatedAt) return false;
       if (filterToday && log.timestamp < todayStart.getTime()) return false;
       if (filterStatus !== 'all' && log.status !== filterStatus) return false;
       if (search) {

@@ -41,6 +41,7 @@ export function useCatData(): CatData {
   const { selectedDeviceId, setSelectedDeviceId } = useDevice();
 
   const [cat, setCat]                   = useState<CatProfile | null>(null);
+  const [allCatIds, setAllCatIds]       = useState<string[]>([]);
   const [devices, setDevices]           = useState<DeviceStatus[]>([]);
   const [rtdbDeviceData, setRtdbDeviceData] = useState<Record<string, any> | null>(null);
   const [feedingLogs, setFeedingLogs]   = useState<FeedingLog[]>([]);
@@ -66,12 +67,15 @@ export function useCatData(): CatData {
 
     subs.push(
       onSnapshot(
-        query(collection(db, 'cats'), where('ownerId', '==', targetOwnerId), limit(1)),
+        query(collection(db, 'cats'), where('ownerId', '==', targetOwnerId)),
         (snap) => {
-          const data = snap.empty
-            ? null
-            : ({ id: snap.docs[0].id, ...snap.docs[0].data() } as CatProfile);
-          setCat(data);
+          const catList = snap.docs.map(
+            (d) => ({ id: d.id, ...d.data() } as CatProfile)
+          );
+          // Aktif = profil paling baru diupdate
+          catList.sort((a, b) => (b.profileUpdatedAt ?? 0) - (a.profileUpdatedAt ?? 0));
+          setCat(catList[0] ?? null);
+          setAllCatIds(catList.map((c) => c.id));
           setLoading(false);
         },
         () => setLoading(false)
@@ -120,12 +124,14 @@ export function useCatData(): CatData {
     return () => unsub();
   }, [claimedDeviceId]);
 
-  // ── Effect 3: feeding logs — depend on cat.id ─────────────────────────────
+  // ── Effect 3: feeding logs — semua catId milik owner ini ────────────────
+  const allCatIdsKey = allCatIds.slice(0, 10).join(',');
   useEffect(() => {
-    if (!cat?.id) return;
+    if (!allCatIdsKey) return;
+    const ids = allCatIdsKey.split(',').filter(Boolean);
 
     const unsub = onSnapshot(
-      query(collection(db, 'feedingLogs'), where('catId', '==', cat.id), limit(200)),
+      query(collection(db, 'feedingLogs'), where('catId', 'in', ids), limit(200)),
       (snap) => {
         const logs = snap.docs
           .map((d) => ({ id: d.id, ...d.data() } as FeedingLog))
@@ -135,7 +141,7 @@ export function useCatData(): CatData {
     );
 
     return unsub;
-  }, [cat?.id]);
+  }, [allCatIdsKey]);
 
   // When owner changes, clear selectedDeviceId if it no longer belongs
   useEffect(() => {

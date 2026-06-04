@@ -211,6 +211,9 @@ export function Dashboard() {
 
   // ── Profile-aware log filtering ───────────────────────
   // All logs are reset when profile changes (profileUpdatedAt is the cutoff)
+  const [selectedDate, setSelectedDate] = useState(() => {
+  return new Date().toISOString().split('T')[0];
+  });
   const todayStart = new Date();
   todayStart.setHours(0, 0, 0, 0);
   const todayStartMs = todayStart.getTime();
@@ -223,16 +226,27 @@ export function Dashboard() {
   // Today's logs: since start of today (or profile update if it happened today)
   const profileUpdatedTodayMs =
     profileUpdatedAt >= todayStartMs ? profileUpdatedAt : todayStartMs;
-  const todayLogs = filteredLogs.filter((l) => l.timestamp >= todayStartMs);
-  const todayTotal = Math.round(
-    filteredLogs
-      .filter((l) => l.timestamp >= profileUpdatedTodayMs)
-      .reduce((sum, l) => sum + (l.amountDispensed ?? 0), 0)
-  );
+  const selectedStart = new Date(selectedDate);
+selectedStart.setHours(0, 0, 0, 0);
+
+const selectedEnd = new Date(selectedDate);
+selectedEnd.setHours(23, 59, 59, 999);
+
+const selectedLogs = filteredLogs.filter(
+  (l) =>
+    l.timestamp >= selectedStart.getTime() &&
+    l.timestamp <= selectedEnd.getTime()
+);
+  const selectedTotal = Math.round(
+  selectedLogs.reduce(
+    (sum, l) => sum + (l.amountDispensed ?? 0),
+    0
+  )
+);
 
   const dailyTarget = cat?.dailyGramTarget ?? 0;
   const progressPct =
-    dailyTarget > 0 ? Math.min(Math.round((todayTotal / dailyTarget) * 100), 100) : 0;
+    dailyTarget > 0 ? Math.min(Math.round((selectedTotal / dailyTarget) * 100), 100) : 0;
   const foodStock = device?.foodStockLevel ?? 0;
 
   // ── Area chart: feeding by 4-hour buckets today ───────
@@ -240,7 +254,7 @@ export function Dashboard() {
   const buckets: Record<string, number> = Object.fromEntries(
     bucketLabels.map((l) => [l, 0])
   );
-  todayLogs.forEach((log) => {
+  selectedLogs.forEach((log) => {
     const hour = new Date(log.timestamp).getHours();
     const label = bucketLabels[Math.floor(hour / 4)];
     if (label !== undefined) buckets[label] += log.amountDispensed ?? 0;
@@ -253,7 +267,7 @@ export function Dashboard() {
   // ── Bar chart: weekly totals (filteredLogs resets on profile change) ─────────
   const weeklyMap: Record<string, number> = {};
   const now = Date.now();
-  filteredLogs.forEach((log) => {
+  selectedLogs.forEach((log) => {
     const daysAgo = Math.floor((now - log.timestamp) / 86400000);
     if (daysAgo < 7) {
       const label = DAYS_ID[new Date(log.timestamp).getDay()];
@@ -266,7 +280,7 @@ export function Dashboard() {
   }));
 
   // ── Alerts ────────────────────────────────────────────
-  const isOverfed = dailyTarget > 0 && todayTotal >= dailyTarget;
+  const isOverfed = dailyTarget > 0 && selectedTotal >= dailyTarget;
   const isLowStock = foodStock > 0 && foodStock < 20;
   const isOffline = device !== null && !device.isOnline;
 
@@ -458,10 +472,17 @@ export function Dashboard() {
           <p className="text-sm md:text-lg font-bold uppercase tracking-[4px] text-amber-500">
             Progress Pemberian
           </p>
+          <p className="text-sm text-gray-400 mt-1">
+            {new Date(selectedDate).toLocaleDateString('id-ID', {
+              day: 'numeric',
+              month: 'long',
+              year: 'numeric',
+            })}
+          </p>
 
           <div className="my-5 md:my-10 text-center">
             <h1 className="text-5xl md:text-[72px] leading-none font-black text-gray-900">
-              {todayTotal}g
+              {selectedTotal}g
             </h1>
             <p className="text-lg md:text-2xl text-gray-500 mt-2 md:mt-4 font-medium">
               dari {dailyTarget > 0 ? `${dailyTarget}g` : '—'}
@@ -556,10 +577,10 @@ export function Dashboard() {
             </div>
           </div>
 
-          {todayLogs.length > 0 && (
+          {selectedLogs.length > 0 && (
             <p className="text-xs text-gray-400 flex items-center gap-1">
               <span>↘</span>
-              <span>-{todayLogs[0].amountDispensed}g dari pemberian terakhir</span>
+              <span>-{selectedLogs[0].amountDispensed}g dari pemberian terakhir</span>
             </p>
           )}
         </div>
@@ -638,6 +659,26 @@ export function Dashboard() {
           </svg>
         </div>
       </div>
+      <div className="bg-amber-50 rounded-3xl border border-amber-200 p-5 shadow-sm">
+      <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
+        <div>
+          <h3 className="text-lg font-black text-gray-800">
+            Filter Monitoring
+          </h3>
+          <p className="text-sm text-gray-400">
+            Pilih tanggal untuk melihat riwayat monitoring kucing
+          </p>
+        </div>
+
+        <input
+          type="date"
+          aria-label="Pilih tanggal untuk filter"
+          value={selectedDate}
+          onChange={(e) => setSelectedDate(e.target.value)}
+          className="px-4 py-2 rounded-xl border border-amber-400 bg-amber-200 focus:outline-none focus:ring-2 focus:ring-amber-676rsz00"
+        />
+      </div>
+    </div>
 
       {/* ── CHARTS ── */}
       <div className="grid grid-cols-1 xl:grid-cols-2 gap-5">
@@ -646,10 +687,10 @@ export function Dashboard() {
           <div className="flex items-center justify-between mb-6">
             <div>
               <h2 className="text-2xl font-black text-gray-800">Dinamika Pemberian Makan</h2>
-              <p className="text-sm text-gray-400 mt-1">Tren konsumsi hari ini (gram)</p>
+              <p className="text-sm text-gray-400 mt-1">Tren konsumsi tanggal dipilih (gram)</p>
             </div>
             <span className="px-3 py-1 rounded-full bg-amber-50 text-amber-500 text-xs font-bold">
-              {todayLogs.length} event
+              {selectedLogs.length} event
             </span>
           </div>
           <div className="h-80">
@@ -699,7 +740,7 @@ export function Dashboard() {
 
       {/* ── MONITORING KUCING ── */}
       <CatMonitoringCard
-        feedingLogs={filteredLogs}
+        feedingLogs={selectedLogs}
         bowlWeight={device?.currentWeightOnScale ?? 0}
         catName={cat?.name ?? 'Kucing'}
         catPhotoUrl={(cat as any)?.photoUrl}
