@@ -110,9 +110,12 @@ function generateCSV(data: any): string {
     [],
     ["FEEDING SCHEDULE"],
     ["Time", "Label", "Amount (g)"],
-    ["07:00", "Pagi (Morning)", Math.round(data.result.dailyGramTarget / 3)],
-    ["13:00", "Siang (Afternoon)", Math.round(data.result.dailyGramTarget / 3)],
-    ["19:00", "Malam (Evening)", data.result.dailyGramTarget - 2 * Math.round(data.result.dailyGramTarget / 3)],
+    ["06:00", "Subuh (Early Morning)", Math.round(data.result.dailyGramTarget / 6)],
+    ["09:00", "Pagi (Morning)", Math.round(data.result.dailyGramTarget / 6)],
+    ["12:00", "Siang (Noon)", Math.round(data.result.dailyGramTarget / 6)],
+    ["15:00", "Sore (Afternoon)", Math.round(data.result.dailyGramTarget / 6)],
+    ["18:00", "Petang (Evening)", Math.round(data.result.dailyGramTarget / 6)],
+    ["21:00", "Malam (Night)", data.result.dailyGramTarget - 5 * Math.round(data.result.dailyGramTarget / 6)],
     [],
     ["NOTES"],
     ["Generated at", new Date().toISOString()],
@@ -328,23 +331,41 @@ export default function OnboardingFlow({
 
   const schedule: ScheduleItem[] = [
     {
-      time: "07:00",
-      label: "Pagi",
+      time: "06:00",
+      label: "Subuh",
       icon: "🌅",
-      amount: Math.round(targets.dailyGramTarget / 3),
+      amount: Math.round(targets.dailyGramTarget / 6),
     },
     {
-      time: "13:00",
-      label: "Siang",
+      time: "09:00",
+      label: "Pagi",
       icon: "☀️",
-      amount: Math.round(targets.dailyGramTarget / 3),
+      amount: Math.round(targets.dailyGramTarget / 6),
     },
     {
-      time: "19:00",
+      time: "12:00",
+      label: "Siang",
+      icon: "🌤️",
+      amount: Math.round(targets.dailyGramTarget / 6),
+    },
+    {
+      time: "15:00",
+      label: "Sore",
+      icon: "🌇",
+      amount: Math.round(targets.dailyGramTarget / 6),
+    },
+    {
+      time: "18:00",
+      label: "Petang",
+      icon: "🌆",
+      amount: Math.round(targets.dailyGramTarget / 6),
+    },
+    {
+      time: "21:00",
       label: "Malam",
       icon: "🌙",
       amount:
-        targets.dailyGramTarget - 2 * Math.round(targets.dailyGramTarget / 3),
+        targets.dailyGramTarget - 5 * Math.round(targets.dailyGramTarget / 6),
     },
   ];
 
@@ -1351,32 +1372,37 @@ export default function OnboardingFlow({
                     {/* SCHEDULE */}
                     <div className="mt-12">
 
-                      <p className="text-lg font-black text-gray-800 mb-5">
-                        🕐 Jadwal Feeding
-                      </p>
+                      <div className="flex items-baseline gap-3 mb-5">
+                        <p className="text-lg font-black text-gray-800">
+                          🕐 Jadwal Feeding
+                        </p>
+                        <span className="text-sm font-semibold text-amber-600 bg-amber-50 border border-amber-200 px-2.5 py-0.5 rounded-full">
+                          6x / hari
+                        </span>
+                      </div>
 
-                      <div className="grid md:grid-cols-3 grid-cols-1 gap-4">
+                      <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
 
                         {schedule.map((item: ScheduleItem) => (
 
                           <div
                             key={item.time}
-                            className="bg-gray-50 border border-gray-100 rounded-3xl p-6"
+                            className="bg-gray-50 border border-gray-100 rounded-2xl p-4"
                           >
 
-                            <div className="text-4xl">
+                            <div className="text-2xl">
                               {item.icon}
                             </div>
 
-                            <p className="text-lg font-black text-gray-800 mt-4">
+                            <p className="text-base font-black text-gray-800 mt-2">
                               {item.label}
                             </p>
 
-                            <p className="text-sm text-gray-400 mt-1">
+                            <p className="text-xs text-gray-400 mt-0.5">
                               {item.time}
                             </p>
 
-                            <p className="text-4xl font-black text-amber-700 mt-5">
+                            <p className="text-2xl font-black text-amber-700 mt-3">
                               {item.amount}g
                             </p>
                           </div>

@@ -33,17 +33,21 @@ function getProgressBarColor(pct: number) {
 
 function getSlotLabel(time: string): string {
   const hour = parseInt(time.split(':')[0], 10);
-  if (hour < 11) return 'Pagi';
+  if (hour < 7)  return 'Subuh';
+  if (hour < 12) return 'Pagi';
   if (hour < 15) return 'Siang';
-  if (hour < 19) return 'Sore';
+  if (hour < 18) return 'Sore';
+  if (hour < 21) return 'Petang';
   return 'Malam';
 }
 
 function getSlotIcon(time: string): string {
   const hour = parseInt(time.split(':')[0], 10);
-  if (hour < 11) return '🌅';
-  if (hour < 15) return '☀️';
-  if (hour < 19) return '🌤️';
+  if (hour < 7)  return '🌅';
+  if (hour < 12) return '☀️';
+  if (hour < 15) return '🌤️';
+  if (hour < 18) return '🌇';
+  if (hour < 21) return '🌆';
   return '🌙';
 }
 
@@ -156,11 +160,31 @@ export function FeedingControl() {
   // History visibility
   const [showHistory, setShowHistory] = useState(false);
 
-  // ── Sync from Firestore ──────────────────────────────────────────────────
+  // ── Sync from Firestore + auto-migrasi 3-slot → 6-slot ─────────────────
   useEffect(() => {
     if (!cat) return;
     const slots = (cat.feedingSchedule ?? []).map((s) => ({ ...s, active: s.active !== false }));
-    setSchedule(slots);
+
+    // Jika slot < 6, rebuild otomatis ke jadwal 6x/hari lalu simpan ke Firestore
+    if (slots.length < 6 && cat.dailyGramTarget > 0) {
+      const target = cat.dailyGramTarget;
+      const perSlot = Math.round(target / 6);
+      const sixSlots: FeedingScheduleSlot[] = [
+        { time: '06:00', label: 'Subuh',  amount: perSlot,                   active: true },
+        { time: '09:00', label: 'Pagi',   amount: perSlot,                   active: true },
+        { time: '12:00', label: 'Siang',  amount: perSlot,                   active: true },
+        { time: '15:00', label: 'Sore',   amount: perSlot,                   active: true },
+        { time: '18:00', label: 'Petang', amount: perSlot,                   active: true },
+        { time: '21:00', label: 'Malam',  amount: target - 5 * perSlot,      active: true },
+      ];
+      setSchedule(sixSlots);
+      if (cat.id) {
+        updateDoc(doc(db, 'cats', cat.id), { feedingSchedule: sixSlots }).catch(console.error);
+      }
+    } else {
+      setSchedule(slots);
+    }
+
     setSmartFeedEnabled((cat as any).smartFeedEnabled !== false);
   }, [cat]);
 
@@ -1066,7 +1090,7 @@ export function FeedingControl() {
               <div>
                 <h3 className="text-2xl font-black text-gray-900">Jadwal Otomatis</h3>
                 <p className="text-base text-gray-400">
-                  {schedule.filter((s) => s.active !== false).length} slot aktif
+                  {schedule.filter((s) => s.active !== false).length} dari {schedule.length} slot aktif · 6x/hari
                 </p>
               </div>
             </div>
