@@ -7,8 +7,9 @@ import {
   where,
   onSnapshot,
   limit,
+  addDoc,
 } from 'firebase/firestore';
-import { ref, onValue } from 'firebase/database';
+import { ref, onValue, set } from 'firebase/database';
 import { db, rtdb } from './firebase';
 import { useAuth } from './AuthContext';
 import { useDevice } from './DeviceContext';
@@ -50,6 +51,8 @@ export function useCatData(): CatData {
 
   const prevTargetRef       = useRef<number | null>(null);
   const prevScheduleKeyRef  = useRef<string | null>(null);
+  // Ref cat terkini agar listener RTDB tidak punya stale closure
+  const catRef              = useRef<CatProfile | null>(null);
 
   const isAdmin = profile?.role === UserRole.SUPER_ADMIN;
   const targetOwnerId = isAdmin
@@ -109,6 +112,9 @@ export function useCatData(): CatData {
     return () => subs.forEach((u) => u());
   }, [user, targetOwnerId]);
 
+  // Selalu sinkronkan catRef agar listener RTDB tidak punya stale closure
+  useEffect(() => { catRef.current = cat; }, [cat]);
+
   // ── Effect 2: RTDB device telemetri — subscribe setelah device ID diketahui ─
   // Device ID didapat dari Firestore claim doc (devices[0].id)
   const claimedDeviceId = devices[0]?.id;
@@ -116,12 +122,40 @@ export function useCatData(): CatData {
   useEffect(() => {
     if (!claimedDeviceId || !rtdb) return;
 
+    // 2a. Telemetri live (isOnline, weight, servo, dll.)
     const deviceRtdbRef = ref(rtdb, `devices/${claimedDeviceId}`);
-    const unsub = onValue(deviceRtdbRef, (snapshot) => {
+    const unsubTelemetry = onValue(deviceRtdbRef, (snapshot) => {
       setRtdbDeviceData(snapshot.exists() ? snapshot.val() : null);
     });
 
-    return () => unsub();
+    // 2b. Deteksi jadwal otomatis selesai dari ESP32
+    // ESP32 menulis scheduledFeedLog {amount, slot, ts, processed:false}
+    // Web app baca → buat Firestore feedingLog → set processed:true (cegah dobel)
+    const schedLogRef = ref(rtdb, `devices/${claimedDeviceId}/scheduledFeedLog`);
+    const unsubSchedLog = onValue(schedLogRef, async (snap) => {
+      if (!snap.exists()) return;
+      const data = snap.val() as { amount: number; slot: string; ts: number; processed: boolean };
+      if (data.processed !== false || !data.amount || !catRef.current?.id) return;
+
+      // Tandai processed=true duluan — cegah double-log
+      await set(ref(rtdb, `devices/${claimedDeviceId}/scheduledFeedLog/processed`), true);
+
+      // Buat Firestore feedingLog dengan notes:'scheduled'
+      await addDoc(collection(db, 'feedingLogs'), {
+        catId:           catRef.current.id,
+        deviceId:        claimedDeviceId,
+        timestamp:       data.ts ?? Date.now(),
+        amountRequested: data.amount,
+        amountDispensed: data.amount,
+        status:          'success',
+        notes:           'scheduled',
+      });
+    });
+
+    return () => {
+      unsubTelemetry();
+      unsubSchedLog();
+    };
   }, [claimedDeviceId]);
 
   // ── Effect 3: feeding logs — semua catId milik owner ini ────────────────

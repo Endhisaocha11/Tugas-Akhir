@@ -142,8 +142,8 @@ export function FeedingControl() {
   const [smartFeedEnabled, setSmartFeedEnabled] = useState(true);
 
   // Manual feed
-  const [feedingAmount, setFeedingAmount] = useState(1);
-  const [portionInputStr, setPortionInputStr] = useState('1');
+  const [feedingAmount, setFeedingAmount] = useState(5);
+  const [portionInputStr, setPortionInputStr] = useState('5');
   const [isFeeding, setIsFeeding] = useState(false);
   const [feedResult, setFeedResult] = useState<'success' | 'timeout' | 'error' | null>(null);
   const [feedPhase, setFeedPhase] = useState<'sending' | 'waiting'>('sending');
@@ -209,21 +209,19 @@ export function FeedingControl() {
 
   const todayStart = new Date(); todayStart.setHours(0, 0, 0, 0);
   const todayStartMs = todayStart.getTime();
-  // Hanya hitung log setelah profil terakhir disimpan (jika disimpan hari ini)
-  const profileUpdatedTodayMs =
-    cat?.profileUpdatedAt && cat.profileUpdatedAt >= todayStartMs
-      ? cat.profileUpdatedAt
-      : todayStartMs;
+
+  // Hanya hitung log kucing aktif sejak tengah malam — tidak direset saat profil diedit
+  // (dailyLimitReachedDate tetap di-clear oleh useCatData saat target/jadwal berubah)
   const todayTotal = Math.round(
     feedingLogs
-      .filter((l) => l.timestamp >= profileUpdatedTodayMs)
+      .filter((l) => l.catId === cat?.id && l.timestamp >= todayStartMs)
       .reduce((sum, l) => sum + (l.amountDispensed ?? 0), 0)
   );
 
   // Manual-only total today — used as basis for auto-slot adjustment
   const todayManualTotal = Math.round(
     feedingLogs
-      .filter((l) => l.timestamp >= profileUpdatedTodayMs && l.notes === 'manual')
+      .filter((l) => l.catId === cat?.id && l.timestamp >= todayStartMs && l.notes === 'manual')
       .reduce((sum, l) => sum + (l.amountDispensed ?? 0), 0)
   );
 
@@ -284,7 +282,7 @@ export function FeedingControl() {
   const profileUpdatedAt = cat?.profileUpdatedAt ?? 0;
   const usageDays = useMemo(() => {
     const map = new Map<string, UsageDayData>();
-    feedingLogs.filter((log) => log.timestamp >= profileUpdatedAt).forEach((log) => {
+    feedingLogs.filter((log) => log.catId === cat?.id && log.timestamp >= profileUpdatedAt).forEach((log) => {
       const d = new Date(log.timestamp);
       const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
       const existing = map.get(key) ?? { total: 0, count: 0, manual: 0, auto: 0, first: log.timestamp, last: log.timestamp };
@@ -851,7 +849,7 @@ export function FeedingControl() {
                 <input
                   aria-label="Ukuran Porsi"
                   type="range"
-                  min="1"
+                  min="5"
                   max="200"
                   step="1"
                   value={feedingAmount}
@@ -881,7 +879,7 @@ export function FeedingControl() {
                   }}
                   onBlur={() => {
                     const val = parseInt(portionInputStr, 10);
-                    const clamped = isNaN(val) || val < 1 ? 1 : Math.min(200, val);
+                    const clamped = isNaN(val) || val < 5 ? 5 : Math.min(200, val);
                     setFeedingAmount(clamped);
                     setPortionInputStr(String(clamped));
                   }}
@@ -1003,17 +1001,17 @@ export function FeedingControl() {
               <button
                 type="button"
                 onClick={() => {
-                  if (isAtDailyLimit || wouldExceed || feedingAmount < 1) return;
+                  if (isAtDailyLimit || wouldExceed || feedingAmount < 5) return;
                   setShowConfirm(true);
                 }}
-                disabled={isAtDailyLimit || wouldExceed || feedingAmount < 1}
+                disabled={isAtDailyLimit || wouldExceed || feedingAmount < 5}
                 className={cn(
                   'w-full py-5 rounded-3xl font-black text-lg md:text-xl flex items-center justify-center gap-3 transition-all',
                   isAtDailyLimit
                     ? 'bg-gray-100 text-gray-400 cursor-not-allowed'
                     : wouldExceed
                     ? 'bg-red-100 text-red-400 cursor-not-allowed border-2 border-red-200'
-                    : feedingAmount < 1
+                    : feedingAmount < 5
                     ? 'bg-gray-100 text-gray-400 cursor-not-allowed'
                     : 'bg-amber-400 hover:bg-amber-500 active:scale-95 text-white shadow-lg shadow-amber-200'
                 )}

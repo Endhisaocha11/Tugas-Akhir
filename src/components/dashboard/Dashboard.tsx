@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useMemo } from 'react';
 import { Layers, AlertCircle, Weight, Wifi, WifiOff, Settings2, X, Copy, Check, Link2, Clock, Info } from 'lucide-react';
 import {
   AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip,
@@ -209,79 +209,86 @@ export function Dashboard() {
     });
   };
 
-  // ── Profile-aware log filtering ───────────────────────
-  // All logs are reset when profile changes (profileUpdatedAt is the cutoff)
-  const [selectedDate, setSelectedDate] = useState(() => {
-  return new Date().toISOString().split('T')[0];
-  });
-  const todayStart = new Date();
-  todayStart.setHours(0, 0, 0, 0);
-  const todayStartMs = todayStart.getTime();
+  // ── Filter state ─────────────────────────────────────
+  type FilterMode = 'all' | 'today' | 'date';
+  const [filterMode, setFilterMode] = useState<FilterMode>('today');
+  const [selectedDate, setSelectedDate] = useState(() => new Date().toISOString().split('T')[0]);
 
-  // Filter ALL logs by profileUpdatedAt so charts reset when profile changes
+  const todayStr = new Date().toISOString().split('T')[0];
   const profileUpdatedAt = cat?.profileUpdatedAt ?? 0;
-  const filteredLogs = feedingLogs.filter((l) => l.timestamp >= profileUpdatedAt);
-  const hiddenLogsCount = feedingLogs.length - filteredLogs.length;
 
-  // Today's logs: since start of today (or profile update if it happened today)
-  const profileUpdatedTodayMs =
-    profileUpdatedAt >= todayStartMs ? profileUpdatedAt : todayStartMs;
-  const selectedStart = new Date(selectedDate);
-selectedStart.setHours(0, 0, 0, 0);
+  // Semua log milik kucing aktif — tanpa filter waktu (untuk chart mingguan)
+  const allCatLogs = useMemo(
+    () => feedingLogs.filter((l) => l.catId === cat?.id),
+    [feedingLogs, cat?.id]
+  );
+  // Log sejak profil terakhir diperbarui — untuk filter harian & progress
+  const catLogs = useMemo(
+    () => allCatLogs.filter((l) => l.timestamp >= profileUpdatedAt),
+    [allCatLogs, profileUpdatedAt]
+  );
+  const hiddenLogsCount = allCatLogs.length - catLogs.length;
 
-const selectedEnd = new Date(selectedDate);
-selectedEnd.setHours(23, 59, 59, 999);
+  // Log aktif berdasarkan filter yang dipilih
+  const activeLogs = useMemo(() => {
+    if (filterMode === 'all') return catLogs;
+    const dateStr = filterMode === 'today' ? todayStr : selectedDate;
+    const start = new Date(dateStr + 'T00:00:00').getTime();
+    const end   = new Date(dateStr + 'T23:59:59.999').getTime();
+    return catLogs.filter((l) => l.timestamp >= start && l.timestamp <= end);
+  }, [filterMode, selectedDate, catLogs, todayStr]);
 
-const selectedLogs = filteredLogs.filter(
-  (l) =>
-    l.timestamp >= selectedStart.getTime() &&
-    l.timestamp <= selectedEnd.getTime()
-);
   const selectedTotal = Math.round(
-  selectedLogs.reduce(
-    (sum, l) => sum + (l.amountDispensed ?? 0),
-    0
-  )
-);
+    activeLogs.reduce((sum, l) => sum + (l.amountDispensed ?? 0), 0)
+  );
 
   const dailyTarget = cat?.dailyGramTarget ?? 0;
   const progressPct =
     dailyTarget > 0 ? Math.min(Math.round((selectedTotal / dailyTarget) * 100), 100) : 0;
   const foodStock = device?.foodStockLevel ?? 0;
 
-  // ── Area chart: feeding by 4-hour buckets today ───────
+  // ── Area chart: per-hari (mode all) atau per-4-jam (mode tanggal) ────────────
   const bucketLabels = ['00:00', '04:00', '08:00', '12:00', '16:00', '20:00'];
-  const buckets: Record<string, number> = Object.fromEntries(
-    bucketLabels.map((l) => [l, 0])
-  );
-  selectedLogs.forEach((log) => {
-    const hour = new Date(log.timestamp).getHours();
-    const label = bucketLabels[Math.floor(hour / 4)];
-    if (label !== undefined) buckets[label] += log.amountDispensed ?? 0;
-  });
-  const feedingDynamics = bucketLabels.map((time) => ({
-    time,
-    weight: Math.round(buckets[time]),
-  }));
-
-  // ── Bar chart: weekly totals (filteredLogs resets on profile change) ─────────
-  const weeklyMap: Record<string, number> = {};
-  const now = Date.now();
-  selectedLogs.forEach((log) => {
-    const daysAgo = Math.floor((now - log.timestamp) / 86400000);
-    if (daysAgo < 7) {
-      const label = DAYS_ID[new Date(log.timestamp).getDay()];
-      weeklyMap[label] = (weeklyMap[label] ?? 0) + (log.amountDispensed ?? 0);
+  const feedingDynamics = useMemo(() => {
+    if (filterMode === 'all') {
+      return Array.from({ length: 7 }, (_, i) => {
+        const d = new Date();
+        d.setDate(d.getDate() - (6 - i));
+        const dStr = d.toISOString().split('T')[0];
+        const total = catLogs
+          .filter((l) => new Date(l.timestamp).toISOString().split('T')[0] === dStr)
+          .reduce((sum, l) => sum + (l.amountDispensed ?? 0), 0);
+        return { time: DAYS_ID[d.getDay()], weight: Math.round(total) };
+      });
     }
-  });
-  const weeklyConsumption = DAYS_ID.map((day) => ({
-    day,
-    amount: Math.round(weeklyMap[day] ?? 0),
-  }));
+    const buckets: Record<string, number> = Object.fromEntries(bucketLabels.map((l) => [l, 0]));
+    activeLogs.forEach((log) => {
+      const hour = new Date(log.timestamp).getHours();
+      const label = bucketLabels[Math.floor(hour / 4)];
+      if (label !== undefined) buckets[label] += log.amountDispensed ?? 0;
+    });
+    return bucketLabels.map((time) => ({ time, weight: Math.round(buckets[time]) }));
+  }, [filterMode, activeLogs, catLogs]);
+
+  // ── Bar chart: selalu 7 hari terakhir — tidak ikut filter apapun ─────────────
+  const weeklyConsumption = useMemo(() => {
+    const weeklyMap: Record<string, number> = {};
+    const now = Date.now();
+    allCatLogs.forEach((log) => {
+      const daysAgo = Math.floor((now - log.timestamp) / 86400000);
+      if (daysAgo < 7) {
+        const label = DAYS_ID[new Date(log.timestamp).getDay()];
+        weeklyMap[label] = (weeklyMap[label] ?? 0) + (log.amountDispensed ?? 0);
+      }
+    });
+    return DAYS_ID.map((day) => ({ day, amount: Math.round(weeklyMap[day] ?? 0) }));
+  }, [allCatLogs]);
 
   // ── Alerts ────────────────────────────────────────────
   const isOverfed = dailyTarget > 0 && selectedTotal >= dailyTarget;
-  const isLowStock = foodStock > 0 && foodStock < 20;
+  // Notif muncul saat device ada + stok < 20% (termasuk 0%)
+  // Hilang hanya saat stok sudah ≥ 20% lagi
+  const isLowStock = device !== null && foodStock < 20;
   const isOffline = device !== null && !device.isOnline;
 
   if (loading) {
@@ -292,307 +299,252 @@ const selectedLogs = filteredLogs.filter(
     );
   }
 
-  return (
-    <div className="space-y-5">
+  // Label filter aktif untuk ditampilkan di progress card
+  const filterLabel = filterMode === 'all'
+    ? 'Semua riwayat'
+    : filterMode === 'today'
+    ? new Date().toLocaleDateString('id-ID', { day: 'numeric', month: 'long', year: 'numeric' })
+    : new Date(selectedDate + 'T00:00:00').toLocaleDateString('id-ID', { day: 'numeric', month: 'long', year: 'numeric' });
 
-      {/* ── DEVICE STATUS BANNER ── */}
-      {!device && (
-        <div className="flex items-center justify-between gap-4 bg-orange-50 border border-orange-200 rounded-2xl px-5 py-4">
-          <div className="flex items-center gap-3">
-            <div className="w-9 h-9 rounded-xl bg-orange-100 flex items-center justify-center shrink-0">
-              <WifiOff className="w-4 h-4 text-orange-500" />
-            </div>
-            <div>
-              <p className="text-sm font-bold text-orange-700">Perangkat ESP32 belum terhubung</p>
-              <p className="text-xs text-orange-500 mt-0.5">Fitur otomatis tidak aktif. Hubungkan perangkat untuk mulai monitoring.</p>
-            </div>
+  return (
+    <div className="space-y-5 pb-8">
+
+      {/* ── HEADER ── */}
+      <div>
+        <h2 className="text-3xl font-black text-gray-900">Dashboard</h2>
+        <p className="text-gray-400 mt-1 text-sm">
+          Pantau kondisi dan pola makan {cat?.name ?? 'kucing'} secara real-time.
+        </p>
+      </div>
+
+      {/* ── BANNERS (hanya tampil jika relevan) ── */}
+      <div className="space-y-3">
+        {!cat && (
+          <div className="flex items-center gap-3 bg-amber-50 border border-amber-200 rounded-2xl px-5 py-3.5">
+            <span className="text-lg shrink-0">🐱</span>
+            <p className="text-sm font-semibold text-amber-700">
+              Belum ada profil kucing. Admin perlu mengisi profil melalui Onboarding Flow.
+            </p>
           </div>
-          {isAdmin && (
-            <button
-              type="button"
-              onClick={() => setShowConnectModal(true)}
-              className="shrink-0 flex items-center gap-2 px-4 py-2 rounded-xl bg-orange-500 hover:bg-orange-600 text-white text-xs font-bold transition-colors"
-            >
-              <Link2 className="w-3.5 h-3.5" />
-              Hubungkan
-            </button>
-          )}
-        </div>
-      )}
-      {isOffline && (
-        <div className="flex items-center justify-between gap-4 bg-gray-50 border border-gray-200 rounded-2xl px-5 py-4">
-          <div className="flex items-center gap-3">
-            <div className="w-9 h-9 rounded-xl bg-gray-100 flex items-center justify-center shrink-0">
-              <WifiOff className="w-4 h-4 text-gray-400" />
-            </div>
-            <div>
-              <p className="text-sm font-bold text-gray-600">Perangkat offline</p>
-              <p className="text-xs text-gray-400 mt-0.5">
-                Terakhir aktif: {device?.lastPulse
-                  ? new Date(device.lastPulse).toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' })
-                  : '—'}. Periksa koneksi Wi-Fi ESP32.
+        )}
+        {!device && (
+          <div className="flex items-center justify-between gap-4 bg-orange-50 border border-orange-200 rounded-2xl px-5 py-3.5">
+            <div className="flex items-center gap-3">
+              <WifiOff className="w-4 h-4 text-orange-500 shrink-0" />
+              <p className="text-sm font-semibold text-orange-700">
+                Perangkat ESP32 belum terhubung — fitur otomatis tidak aktif.
               </p>
             </div>
+            {isAdmin && (
+              <button type="button" onClick={() => setShowConnectModal(true)}
+                className="shrink-0 flex items-center gap-1.5 px-4 py-2 rounded-xl bg-orange-500 hover:bg-orange-600 text-white text-xs font-bold transition-colors">
+                <Link2 className="w-3.5 h-3.5" /> Hubungkan
+              </button>
+            )}
           </div>
-          {isAdmin && (
-            <button
-              type="button"
-              onClick={() => setShowConnectModal(true)}
-              className="shrink-0 px-4 py-2 rounded-xl bg-gray-200 hover:bg-gray-300 text-gray-600 text-xs font-bold transition-colors"
-            >
-              Info Koneksi
-            </button>
-          )}
-        </div>
-      )}
-
-      {/* ── ALERTS ── */}
-      {isOverfed && (
-        <div className="flex items-center gap-3 bg-red-50 border border-red-100 rounded-2xl px-5 py-3">
-          <AlertCircle className="w-4 h-4 text-red-400 shrink-0" />
-          <p className="text-sm text-red-600">
-            Batas pemberian makan harian telah tercapai untuk mencegah overfeeding dan risiko FLUTD.
-          </p>
-        </div>
-      )}
-      {isLowStock && (
-        <div className="flex items-center gap-3 bg-orange-50 border border-orange-100 rounded-2xl px-5 py-3">
-          <AlertCircle className="w-4 h-4 text-orange-400 shrink-0" />
-          <p className="text-sm text-orange-600">
-            Stok makanan hampir habis ({foodStock}%). Segera isi ulang wadah pakan.
-          </p>
-        </div>
-      )}
-
-      {/* ── PROFILE RESET BANNER ── */}
-      {profileUpdatedAt > 0 && hiddenLogsCount > 0 && (
-        <div className="flex items-start gap-3 bg-blue-50 border border-blue-100 rounded-2xl px-5 py-4">
-          <Info className="w-4 h-4 text-blue-400 shrink-0 mt-0.5" />
-          <div>
-            <p className="text-sm font-bold text-blue-700">
-              Data analitik direset setelah profil diperbarui
-            </p>
-            <p className="text-xs text-blue-500 mt-0.5">
-              Profil kucing diperbarui pada{' '}
-              <span className="font-semibold">
-                {new Date(profileUpdatedAt).toLocaleDateString('id-ID', {
-                  day: 'numeric', month: 'long', year: 'numeric',
-                  hour: '2-digit', minute: '2-digit',
-                })}
-              </span>
-              . Analitik sekarang hanya menghitung data sejak profil terbaru.{' '}
-              {hiddenLogsCount} log sebelumnya disembunyikan agar target feeding tidak tercampur data profil lama.
+        )}
+        {isOffline && (
+          <div className="flex items-center justify-between gap-4 bg-gray-50 border border-gray-200 rounded-2xl px-5 py-3.5">
+            <div className="flex items-center gap-3">
+              <WifiOff className="w-4 h-4 text-gray-400 shrink-0" />
+              <p className="text-sm font-semibold text-gray-600">
+                Perangkat offline — terakhir aktif:{' '}
+                {device?.lastPulse
+                  ? new Date(device.lastPulse).toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' })
+                  : '—'}
+              </p>
+            </div>
+            {isAdmin && (
+              <button type="button" onClick={() => setShowConnectModal(true)}
+                className="shrink-0 px-4 py-2 rounded-xl bg-gray-200 hover:bg-gray-300 text-gray-600 text-xs font-bold transition-colors">
+                Info
+              </button>
+            )}
+          </div>
+        )}
+        {isOverfed && (
+          <div className="flex items-center gap-3 bg-red-50 border border-red-200 rounded-2xl px-5 py-3.5">
+            <AlertCircle className="w-4 h-4 text-red-400 shrink-0" />
+            <p className="text-sm font-semibold text-red-600">
+              Batas pakan harian tercapai — pemberian tambahan berisiko overfeeding dan FLUTD.
             </p>
           </div>
-        </div>
-      )}
+        )}
+        {isLowStock && (
+          <div className="flex items-center gap-3 bg-red-50 border border-red-200 rounded-2xl px-5 py-3.5">
+            <AlertCircle className="w-4 h-4 text-red-500 shrink-0" />
+            <p className="text-sm font-semibold text-red-600">
+              Stok pakan rendah ({foodStock}%) — segera isi ulang wadah.
+            </p>
+          </div>
+        )}
+        {profileUpdatedAt > 0 && hiddenLogsCount > 0 && (
+          <div className="flex items-start gap-3 bg-blue-50 border border-blue-100 rounded-2xl px-5 py-3.5">
+            <Info className="w-4 h-4 text-blue-400 shrink-0 mt-0.5" />
+            <p className="text-sm text-blue-600">
+              <span className="font-bold">Data direset.</span>{' '}
+              Profil diperbarui pada {new Date(profileUpdatedAt).toLocaleDateString('id-ID', { day: 'numeric', month: 'long' })}.
+              {' '}{hiddenLogsCount} log lama disembunyikan agar tidak tercampur data profil baru.
+            </p>
+          </div>
+        )}
+      </div>
 
-      {/* ── NO DATA STATE ── */}
-      {!cat && (
-        <div className="bg-amber-50 border border-amber-200 rounded-2xl px-5 py-4 flex items-center gap-3">
-          <span className="text-xl">🐱</span>
-          <p className="text-sm text-amber-700">
-            Belum ada data kucing. Admin perlu mengisi profil kucing melalui Onboarding Flow.
-          </p>
-        </div>
-      )}
-
-      {/* ── TOP SECTION ── */}
+      {/* ── PROFIL + PROGRESS ── */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-5">
 
-        {/* PROFILE CARD */}
-        <div className="lg:col-span-2 bg-white rounded-4xl border border-gray-200 p-5 md:p-8 shadow-sm">
-          <div className="flex flex-col xl:flex-row xl:items-center gap-5 md:gap-8">
-
-            {/* AVATAR */}
+        {/* Profil Kucing */}
+        <div className="lg:col-span-2 bg-white rounded-4xl border border-gray-100 p-6 md:p-8 shadow-sm">
+          <p className="text-xs font-black uppercase tracking-widest text-gray-400 mb-5">Profil Kucing</p>
+          <div className="flex items-center gap-5 md:gap-8">
             <div className="relative shrink-0">
-              <div className="w-32 h-32 rounded-full border-[5px] border-amber-400 overflow-hidden shadow-xl bg-gray-100">
+              <div className="w-24 h-24 md:w-32 md:h-32 rounded-full border-4 border-amber-400 overflow-hidden bg-gray-100 shadow-lg">
                 <img
-                  src={
-                    (cat as any)?.photoUrl ||
-                    `https://api.dicebear.com/7.x/bottts/svg?seed=${cat?.name ?? 'Cat'}`
-                  }
+                  src={(cat as any)?.photoUrl || `https://api.dicebear.com/7.x/bottts/svg?seed=${cat?.name ?? 'Cat'}`}
                   alt="cat"
                   className="w-full h-full object-cover"
                 />
               </div>
-              <span
-                className={`absolute bottom-3 right-3 w-6 h-6 border-4 border-white rounded-full ${
-                  device?.isOnline ? 'bg-green-400' : 'bg-gray-300'
-                }`}
-              />
+              <span className={cn(
+                'absolute bottom-1 right-1 w-5 h-5 border-[3px] border-white rounded-full',
+                device?.isOnline ? 'bg-green-400' : 'bg-gray-300'
+              )} />
             </div>
-
-            {/* INFO */}
-            <div className="flex-1">
-              <h1 className="text-2xl md:text-[42px] leading-none font-black text-gray-900">
+            <div className="flex-1 min-w-0">
+              <h1 className="text-2xl md:text-4xl font-black text-gray-900 truncate">
                 {cat?.name ?? '—'}
               </h1>
-
-              <div className="flex flex-wrap gap-2 md:gap-3 mt-3 md:mt-5">
-                <span className="px-4 py-2 rounded-2xl bg-gray-100 text-gray-700 text-lg font-semibold">
-                  Berat {cat?.weight ?? '—'}kg
+              <div className="flex flex-wrap gap-2 mt-3">
+                <span className="px-3 py-1.5 rounded-xl bg-gray-100 text-gray-700 text-sm font-semibold">
+                  {cat?.weight ?? '—'} kg
                 </span>
-                <span className="px-4 py-2 rounded-2xl bg-gray-100 text-gray-700 text-lg font-semibold">
+                <span className="px-3 py-1.5 rounded-xl bg-gray-100 text-gray-700 text-sm font-semibold">
                   {cat?.gender === 'male' ? '♂ Jantan' : cat?.gender === 'female' ? '♀ Betina' : '—'}
                 </span>
                 {cat?.isSterilized && (
-                  <span className="px-4 py-2 rounded-2xl bg-teal-50 text-teal-600 text-lg font-semibold border border-teal-100">
+                  <span className="px-3 py-1.5 rounded-xl bg-teal-50 text-teal-600 text-sm font-semibold border border-teal-100">
                     Sterilisasi
                   </span>
                 )}
                 {cat?.bodyCondition && (
-                  <span className="px-4 py-2 rounded-2xl bg-amber-50 text-amber-700 text-lg font-semibold border border-amber-100">
+                  <span className="px-3 py-1.5 rounded-xl bg-amber-50 text-amber-700 text-sm font-semibold border border-amber-100">
                     {getBodyLabel(cat.bodyCondition as unknown as number)}
                   </span>
                 )}
               </div>
-
-              <div className="flex flex-wrap gap-6 md:gap-12 mt-4 md:mt-8">
-                <div>
-                  <p className="text-sm md:text-lg text-gray-500 font-medium">Target Harian</p>
-                  <h2 className="text-2xl md:text-[42px] font-black text-amber-500 leading-none mt-1 md:mt-2">
+              <div className="grid grid-cols-2 gap-4 mt-5">
+                <div className="bg-amber-50 rounded-2xl px-4 py-3 border border-amber-100">
+                  <p className="text-xs text-amber-600 font-semibold">Target Harian</p>
+                  <p className="text-2xl font-black text-amber-600 mt-0.5">
                     {dailyTarget > 0 ? `${dailyTarget}g` : '—'}
-                  </h2>
+                  </p>
                 </div>
-                <div>
-                  <p className="text-sm md:text-lg text-gray-500 font-medium">Kalori/Hari</p>
-                  <h2 className="text-2xl md:text-[42px] font-black text-blue-500 leading-none mt-1 md:mt-2">
+                <div className="bg-blue-50 rounded-2xl px-4 py-3 border border-blue-100">
+                  <p className="text-xs text-blue-600 font-semibold">Kalori / Hari</p>
+                  <p className="text-2xl font-black text-blue-600 mt-0.5">
                     {cat?.dailyCalorieTarget ? `${cat.dailyCalorieTarget}` : '—'}
-                  </h2>
+                  </p>
                 </div>
               </div>
             </div>
-
           </div>
         </div>
 
-        {/* PROGRESS CARD */}
-        <div className="bg-white rounded-4xl border border-gray-200 p-5 md:p-8 shadow-sm flex flex-col justify-center">
-          <p className="text-sm md:text-lg font-bold uppercase tracking-[4px] text-amber-500">
-            Progress Pemberian
-          </p>
-          <p className="text-sm text-gray-400 mt-1">
-            {new Date(selectedDate).toLocaleDateString('id-ID', {
-              day: 'numeric',
-              month: 'long',
-              year: 'numeric',
-            })}
-          </p>
-
-          <div className="my-5 md:my-10 text-center">
-            <h1 className="text-5xl md:text-[72px] leading-none font-black text-gray-900">
-              {selectedTotal}g
-            </h1>
-            <p className="text-lg md:text-2xl text-gray-500 mt-2 md:mt-4 font-medium">
+        {/* Progress Pemberian */}
+        <div className="bg-white rounded-4xl border border-gray-100 p-6 md:p-8 shadow-sm flex flex-col">
+          <p className="text-xs font-black uppercase tracking-widest text-gray-400">Progress Pemberian</p>
+          <p className="text-sm text-gray-400 mt-1">{filterLabel}</p>
+          <div className="flex-1 flex flex-col items-center justify-center my-6">
+            <p className="text-6xl font-black text-gray-900 leading-none">{selectedTotal}g</p>
+            <p className="text-base text-gray-400 mt-2 font-medium">
               dari {dailyTarget > 0 ? `${dailyTarget}g` : '—'}
             </p>
           </div>
-
-          <div className="w-full h-5 bg-gray-100 rounded-full overflow-hidden">
-            <motion.div
-              initial={{ width: 0 }}
-              animate={{ width: `${progressPct}%` }}
-              transition={{ duration: 1 }}
-              className={`h-full rounded-full ${progressPct >= 100 ? 'bg-red-400' : 'bg-amber-400'}`}
-            />
+          <div>
+            <div className="w-full h-4 bg-gray-100 rounded-full overflow-hidden">
+              <motion.div
+                initial={{ width: 0 }}
+                animate={{ width: `${progressPct}%` }}
+                transition={{ duration: 0.8 }}
+                className={cn('h-full rounded-full', progressPct >= 100 ? 'bg-red-400' : 'bg-amber-400')}
+              />
+            </div>
+            <p className="text-sm text-center text-gray-500 mt-2 font-semibold">
+              {progressPct}% target tercapai
+            </p>
           </div>
-          <p className="text-lg text-center text-gray-500 mt-4 font-medium">
-            {progressPct}% target harian tercapai
-          </p>
         </div>
       </div>
 
-      {/* ── SMALL CARDS ── */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4">
+      {/* ── 4 STATUS MINI CARDS ── */}
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
 
-        {/* 1 — Food Stock Level */}
-        <div className="bg-white rounded-3xl border border-gray-100 p-5 shadow-sm flex flex-col gap-4">
+        {/* Stok Pakan */}
+        <div className="bg-white rounded-3xl border border-gray-100 p-5 shadow-sm flex flex-col gap-3">
           <div className="flex items-center justify-between">
-            <div className="w-10 h-10 rounded-2xl bg-amber-50 flex items-center justify-center">
-              <Layers className="w-5 h-5 text-amber-500" />
+            <div className="w-9 h-9 rounded-xl bg-amber-50 flex items-center justify-center">
+              <Layers className="w-4 h-4 text-amber-500" />
             </div>
-            <span className={cn('text-xs font-bold px-3 py-1 rounded-full',
-              !device           ? 'bg-gray-100 text-gray-400'
-              : foodStock > 50  ? 'bg-green-100 text-green-700'
-              : foodStock > 20  ? 'bg-yellow-100 text-yellow-700'
-              :                   'bg-red-100 text-red-700'
+            <span className={cn('text-[11px] font-bold px-2.5 py-1 rounded-full',
+              !device          ? 'bg-gray-100 text-gray-400'
+              : foodStock > 50 ? 'bg-green-100 text-green-700'
+              : foodStock > 20 ? 'bg-yellow-100 text-yellow-700'
+              :                  'bg-red-100 text-red-700'
             )}>
-              {!device ? 'No Device' : foodStock > 50 ? 'High' : foodStock > 20 ? 'Medium' : 'Low'}
+              {!device ? 'Tidak ada' : foodStock > 50 ? 'Penuh' : foodStock > 20 ? 'Sedang' : 'Kritis'}
             </span>
           </div>
-
           <div>
-            <p className="text-xs text-gray-400 font-medium">Food Stock Level</p>
-            <div className="flex items-baseline gap-1.5 mt-1">
-              <span className="text-4xl font-black text-gray-900">{device ? `${foodStock}%` : '—'}</span>
-              {device && (
-                <span className={cn('text-sm font-semibold',
-                  foodStock > 50 ? 'text-amber-500' : foodStock > 20 ? 'text-yellow-500' : 'text-red-500'
-                )}>
-                  {foodStock > 50 ? 'Full' : foodStock > 20 ? 'Medium' : 'Critical'}
-                </span>
-              )}
-            </div>
+            <p className="text-[11px] text-gray-400 font-medium">Stok Pakan</p>
+            <p className="text-3xl font-black text-gray-900 mt-0.5">{device ? `${foodStock}%` : '—'}</p>
           </div>
-
-          {/* Segmented bar */}
-          <div className="flex gap-1.5">
-            {Array.from({ length: 5 }, (_, i) => {
-              const filled = device && (i + 1) * 20 <= foodStock;
-              return (
-                <div key={i} className={cn('h-2 flex-1 rounded-full',
-                  filled
-                    ? foodStock > 50 ? 'bg-amber-400' : foodStock > 20 ? 'bg-yellow-400' : 'bg-red-400'
-                    : 'bg-gray-100'
-                )} />
-              );
-            })}
+          <div className="flex gap-1">
+            {Array.from({ length: 5 }, (_, i) => (
+              <div key={i} className={cn('h-1.5 flex-1 rounded-full',
+                device && (i + 1) * 20 <= foodStock
+                  ? foodStock > 50 ? 'bg-amber-400' : foodStock > 20 ? 'bg-yellow-400' : 'bg-red-400'
+                  : 'bg-gray-100'
+              )} />
+            ))}
           </div>
         </div>
 
-        {/* 2 — Current Bowl Weight */}
-        <div className="bg-white rounded-3xl border border-gray-100 p-5 shadow-sm flex flex-col gap-4">
+        {/* Berat Mangkuk */}
+        <div className="bg-white rounded-3xl border border-gray-100 p-5 shadow-sm flex flex-col gap-3">
           <div className="flex items-center justify-between">
-            <div className="w-10 h-10 rounded-2xl bg-blue-50 flex items-center justify-center">
-              <Weight className="w-5 h-5 text-blue-500" />
+            <div className="w-9 h-9 rounded-xl bg-blue-50 flex items-center justify-center">
+              <Weight className="w-4 h-4 text-blue-500" />
             </div>
-            <span className={cn('text-xs font-bold px-3 py-1 rounded-full',
+            <span className={cn('text-[11px] font-bold px-2.5 py-1 rounded-full',
               device?.lastPulse && Date.now() - device.lastPulse < 120000
                 ? 'bg-green-100 text-green-700'
                 : 'bg-gray-100 text-gray-400'
             )}>
-              {!device ? 'No Device'
-               : device.lastPulse && Date.now() - device.lastPulse < 120000 ? 'Updated Just Now'
-               : device.lastPulse ? `${Math.floor((Date.now() - device.lastPulse) / 60000)}m ago`
-               : 'No Signal'}
+              {!device ? 'Tidak ada'
+               : device.lastPulse && Date.now() - device.lastPulse < 120000 ? 'Baru diperbarui'
+               : device.lastPulse ? `${Math.floor((Date.now() - device.lastPulse) / 60000)} mnt lalu`
+               : 'Tidak ada sinyal'}
             </span>
           </div>
-
           <div>
-            <p className="text-xs text-gray-400 font-medium">Current Bowl Weight</p>
-            <div className="flex items-baseline gap-1.5 mt-1">
-              <span className="text-4xl font-black text-gray-900">{device?.currentWeightOnScale ?? 0}g</span>
-              <span className="text-sm font-semibold text-gray-400">Remaining</span>
-            </div>
+            <p className="text-[11px] text-gray-400 font-medium">Berat Mangkuk</p>
+            <p className="text-3xl font-black text-gray-900 mt-0.5">{device?.currentWeightOnScale ?? 0}g</p>
           </div>
-
-          {selectedLogs.length > 0 && (
-            <p className="text-xs text-gray-400 flex items-center gap-1">
-              <span>↘</span>
-              <span>-{selectedLogs[0].amountDispensed}g dari pemberian terakhir</span>
+          {allCatLogs.length > 0 && (
+            <p className="text-xs text-gray-400">
+              Pemberian terakhir: <span className="font-bold text-gray-600">{allCatLogs[0].amountDispensed}g</span>
             </p>
           )}
         </div>
 
-        {/* 3 — Servo Status */}
-        <div className="bg-white rounded-3xl border border-gray-100 p-5 shadow-sm flex flex-col">
-          <div className="flex items-center justify-between mb-4">
-            <div className="w-10 h-10 rounded-2xl bg-orange-50 flex items-center justify-center">
-              <Settings2 className="w-5 h-5 text-orange-500" />
+        {/* Status Dispenser */}
+        <div className="bg-white rounded-3xl border border-gray-100 p-5 shadow-sm flex flex-col gap-3">
+          <div className="flex items-center justify-between">
+            <div className="w-9 h-9 rounded-xl bg-orange-50 flex items-center justify-center">
+              <Settings2 className="w-4 h-4 text-orange-500" />
             </div>
-            {device && (
-              <span className={cn('flex items-center gap-1.5 text-xs font-bold px-3 py-1 rounded-full',
+            {device ? (
+              <span className={cn('flex items-center gap-1 text-[11px] font-bold px-2.5 py-1 rounded-full',
                 device.servoStatus === 'jammed'  ? 'bg-red-100 text-red-700'
                 : device.servoStatus === 'active' ? 'bg-amber-100 text-amber-700'
                 :                                   'bg-green-100 text-green-700'
@@ -602,149 +554,159 @@ const selectedLogs = filteredLogs.filter(
                   : device.servoStatus === 'active' ? 'bg-amber-500 animate-pulse'
                   :                                   'bg-green-500'
                 )} />
-                {device.servoStatus === 'jammed' ? 'Error' : device.servoStatus === 'active' ? 'Active' : 'Ready'}
+                {device.servoStatus === 'jammed' ? 'Error' : device.servoStatus === 'active' ? 'Aktif' : 'Siaga'}
               </span>
-            )}
+            ) : <span className="text-[11px] font-bold px-2.5 py-1 rounded-full bg-gray-100 text-gray-400">Tidak ada</span>}
           </div>
-
-          <p className="text-xs text-gray-400 font-medium">Servo Status</p>
-          <p className="text-4xl font-black text-gray-900 mt-1 flex-1">
-            {device?.servoStatus === 'active' ? 'Running'
-             : device?.servoStatus === 'jammed' ? 'Jammed'
-             : device ? 'Idle' : '—'}
-          </p>
-
-          <div className="pt-3 mt-3 border-t border-gray-50 flex justify-between items-center">
-            <span className="text-xs text-gray-400">Last calibration</span>
-            <span className="text-xs font-bold text-gray-600">
-              {device?.lastPulse
-                ? (() => {
-                    const d = Math.floor((Date.now() - device.lastPulse) / 86400000);
-                    return d === 0 ? 'Today' : `${d}d ago`;
-                  })()
-                : '—'}
-            </span>
+          <div>
+            <p className="text-[11px] text-gray-400 font-medium">Status Dispenser</p>
+            <p className="text-3xl font-black text-gray-900 mt-0.5">
+              {device?.servoStatus === 'active' ? 'Jalan'
+               : device?.servoStatus === 'jammed' ? 'Macet'
+               : device ? 'Standby' : '—'}
+            </p>
           </div>
         </div>
 
-        {/* 4 — Device Status */}
-        <div className="bg-white rounded-3xl border border-gray-100 p-5 shadow-sm flex flex-col relative overflow-hidden">
-          <div className="flex items-center justify-between mb-4">
-            <div className="w-10 h-10 rounded-2xl bg-violet-50 flex items-center justify-center">
-              <Wifi className="w-5 h-5 text-violet-500" />
+        {/* Koneksi Perangkat */}
+        <div className="bg-white rounded-3xl border border-gray-100 p-5 shadow-sm flex flex-col gap-3 relative overflow-hidden">
+          <div className="flex items-center justify-between">
+            <div className="w-9 h-9 rounded-xl bg-violet-50 flex items-center justify-center">
+              <Wifi className="w-4 h-4 text-violet-500" />
             </div>
-            <span className="text-xs font-bold px-3 py-1 rounded-full bg-gray-100 text-gray-500">5GHz</span>
-          </div>
-
-          <p className="text-xs text-gray-400 font-medium">Device Status</p>
-          <div className="flex items-center gap-2 mt-1 flex-1">
-            <span className="text-4xl font-black text-gray-900">
-              {device ? (device.isOnline ? 'Online' : 'Offline') : '—'}
+            <span className={cn('text-[11px] font-bold px-2.5 py-1 rounded-full',
+              device?.isOnline ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-400'
+            )}>
+              {device?.isOnline ? 'Terhubung' : 'Terputus'}
             </span>
-            {device?.isOnline && (
-              <span className="w-3 h-3 bg-green-400 rounded-full animate-pulse" />
+          </div>
+          <div>
+            <p className="text-[11px] text-gray-400 font-medium">Koneksi Perangkat</p>
+            <div className="flex items-center gap-2 mt-0.5">
+              <p className="text-3xl font-black text-gray-900">
+                {device ? (device.isOnline ? 'Online' : 'Offline') : '—'}
+              </p>
+              {device?.isOnline && <span className="w-2.5 h-2.5 bg-green-400 rounded-full animate-pulse" />}
+            </div>
+          </div>
+          {device?.lastPulse && (
+            <p className="text-xs text-gray-400">
+              Aktif: <span className="font-bold text-gray-600">
+                {new Date(device.lastPulse).toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' })}
+              </span>
+            </p>
+          )}
+        </div>
+      </div>
+
+      {/* ── MONITORING KUCING + FILTER ── */}
+      <div className="bg-white rounded-3xl border border-gray-100 shadow-sm overflow-hidden">
+        {/* Header dengan filter inline */}
+        <div className="px-6 py-4 border-b border-gray-50 flex flex-wrap items-center justify-between gap-3">
+          <div>
+            <h3 className="font-black text-base text-gray-900">Monitoring Pakan</h3>
+            <p className="text-xs text-gray-400 mt-0.5">
+              {activeLogs.length > 0
+                ? `${activeLogs.length} pemberian · ${filterLabel}`
+                : `Tidak ada data · ${filterLabel}`}
+            </p>
+          </div>
+          <div className="flex flex-wrap items-center gap-2">
+            {(['all', 'today', 'date'] as const).map((mode) => (
+              <button
+                key={mode}
+                type="button"
+                onClick={() => setFilterMode(mode)}
+                className={cn(
+                  'px-4 py-1.5 rounded-xl text-xs font-black transition-all',
+                  filterMode === mode
+                    ? 'bg-amber-500 text-white shadow-sm'
+                    : 'bg-gray-100 text-gray-500 hover:bg-gray-200'
+                )}
+              >
+                {mode === 'all' ? 'Semua' : mode === 'today' ? 'Hari Ini' : 'Pilih Tanggal'}
+              </button>
+            ))}
+            {filterMode === 'date' && (
+              <input
+                type="date"
+                aria-label="Pilih tanggal"
+                value={selectedDate}
+                onChange={(e) => setSelectedDate(e.target.value)}
+                className="px-3 py-1.5 rounded-xl border border-gray-200 bg-white focus:outline-none focus:ring-2 focus:ring-amber-300 text-xs font-bold text-gray-700"
+              />
             )}
           </div>
-
-          {/* Decorative network nodes */}
-          <svg className="absolute bottom-3 right-3 opacity-[0.06] w-24 h-24" viewBox="0 0 80 80" fill="none">
-            <circle cx="62" cy="62" r="6" fill="#374151" />
-            <circle cx="42" cy="50" r="5" fill="#374151" />
-            <circle cx="62" cy="32" r="5" fill="#374151" />
-            <circle cx="22" cy="42" r="4" fill="#374151" />
-            <line x1="62" y1="62" x2="42" y2="50" stroke="#374151" strokeWidth="1.5" />
-            <line x1="42" y1="50" x2="62" y2="32" stroke="#374151" strokeWidth="1.5" />
-            <line x1="42" y1="50" x2="22" y2="42" stroke="#374151" strokeWidth="1.5" />
-            <line x1="62" y1="62" x2="62" y2="32" stroke="#374151" strokeWidth="1" strokeDasharray="2 3" />
-          </svg>
+        </div>
+        <div className="p-5">
+          <CatMonitoringCard
+            feedingLogs={activeLogs}
+            bowlWeight={device?.currentWeightOnScale ?? 0}
+            catName={cat?.name ?? 'Kucing'}
+            catPhotoUrl={(cat as any)?.photoUrl}
+          />
         </div>
       </div>
-      <div className="bg-amber-50 rounded-3xl border border-amber-200 p-5 shadow-sm">
-      <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
-        <div>
-          <h3 className="text-lg font-black text-gray-800">
-            Filter Monitoring
-          </h3>
-          <p className="text-sm text-gray-400">
-            Pilih tanggal untuk melihat riwayat monitoring kucing
-          </p>
-        </div>
-
-        <input
-          type="date"
-          aria-label="Pilih tanggal untuk filter"
-          value={selectedDate}
-          onChange={(e) => setSelectedDate(e.target.value)}
-          className="px-4 py-2 rounded-xl border border-amber-400 bg-amber-200 focus:outline-none focus:ring-2 focus:ring-amber-676rsz00"
-        />
-      </div>
-    </div>
 
       {/* ── CHARTS ── */}
       <div className="grid grid-cols-1 xl:grid-cols-2 gap-5">
 
+        {/* Tren Pemberian — mengikuti filter */}
         <div className="bg-white rounded-3xl border border-gray-100 p-6 shadow-sm">
-          <div className="flex items-center justify-between mb-6">
+          <div className="flex items-start justify-between mb-5">
             <div>
-              <h2 className="text-2xl font-black text-gray-800">Dinamika Pemberian Makan</h2>
-              <p className="text-sm text-gray-400 mt-1">Tren konsumsi tanggal dipilih (gram)</p>
+              <h2 className="text-lg font-black text-gray-800">Tren Pemberian Pakan</h2>
+              <p className="text-xs text-gray-400 mt-0.5">
+                {filterMode === 'all' ? 'Total per hari — 7 hari terakhir' : `Distribusi per sesi · ${filterLabel}`}
+              </p>
             </div>
-            <span className="px-3 py-1 rounded-full bg-amber-50 text-amber-500 text-xs font-bold">
-              {selectedLogs.length} event
+            <span className="px-3 py-1 rounded-full bg-amber-50 text-amber-600 text-xs font-bold border border-amber-100">
+              {activeLogs.length} sesi
             </span>
           </div>
-          <div className="h-80">
+          <div className="h-64">
             <ResponsiveContainer width="100%" height="100%">
               <AreaChart data={feedingDynamics}>
                 <defs>
                   <linearGradient id="colorFeed" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="5%" stopColor="#f59e0b" stopOpacity={0.4} />
+                    <stop offset="5%" stopColor="#f59e0b" stopOpacity={0.3} />
                     <stop offset="95%" stopColor="#f59e0b" stopOpacity={0} />
                   </linearGradient>
                 </defs>
-                <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f3f4f6" />
-                <XAxis dataKey="time" tickLine={false} axisLine={false} />
-                <YAxis tickLine={false} axisLine={false} unit="g" />
+                <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f9fafb" />
+                <XAxis dataKey="time" tickLine={false} axisLine={false} tick={{ fontSize: 11 }} />
+                <YAxis tickLine={false} axisLine={false} unit="g" tick={{ fontSize: 11 }} />
                 <Tooltip formatter={(v) => [`${v}g`, 'Pakan']} />
-                <Area
-                  type="monotone"
-                  dataKey="weight"
-                  stroke="#f59e0b"
-                  strokeWidth={3}
-                  fillOpacity={1}
-                  fill="url(#colorFeed)"
-                />
+                <Area type="monotone" dataKey="weight" stroke="#f59e0b" strokeWidth={2.5} fillOpacity={1} fill="url(#colorFeed)" />
               </AreaChart>
             </ResponsiveContainer>
           </div>
         </div>
 
+        {/* Konsumsi Mingguan — selalu 7 hari, bebas filter */}
         <div className="bg-white rounded-3xl border border-gray-100 p-6 shadow-sm">
-          <div className="mb-6">
-            <h2 className="text-2xl font-black text-gray-800">Analisis Konsumsi Mingguan</h2>
-            <p className="text-sm text-gray-400 mt-1">Statistik konsumsi makanan 7 hari terakhir</p>
+          <div className="flex items-start justify-between mb-5">
+            <div>
+              <h2 className="text-lg font-black text-gray-800">Konsumsi Mingguan</h2>
+              <p className="text-xs text-gray-400 mt-0.5">7 hari terakhir — tidak terpengaruh filter</p>
+            </div>
+            <span className="px-3 py-1 rounded-full bg-blue-50 text-blue-600 text-xs font-bold border border-blue-100">
+              7 hari
+            </span>
           </div>
-          <div className="h-80">
+          <div className="h-64">
             <ResponsiveContainer width="100%" height="100%">
               <BarChart data={weeklyConsumption}>
-                <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f3f4f6" />
-                <XAxis dataKey="day" tickLine={false} axisLine={false} />
-                <YAxis tickLine={false} axisLine={false} unit="g" />
+                <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f9fafb" />
+                <XAxis dataKey="day" tickLine={false} axisLine={false} tick={{ fontSize: 11 }} />
+                <YAxis tickLine={false} axisLine={false} unit="g" tick={{ fontSize: 11 }} />
                 <Tooltip formatter={(v) => [`${v}g`, 'Konsumsi']} />
-                <Bar dataKey="amount" radius={[12, 12, 0, 0]} fill="#f59e0b" />
+                <Bar dataKey="amount" radius={[8, 8, 0, 0]} fill="#3b82f6" />
               </BarChart>
             </ResponsiveContainer>
           </div>
         </div>
       </div>
-
-      {/* ── MONITORING KUCING ── */}
-      <CatMonitoringCard
-        feedingLogs={selectedLogs}
-        bowlWeight={device?.currentWeightOnScale ?? 0}
-        catName={cat?.name ?? 'Kucing'}
-        catPhotoUrl={(cat as any)?.photoUrl}
-      />
 
 
       {/* ── CONNECT DEVICE MODAL ── */}

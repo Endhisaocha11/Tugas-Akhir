@@ -4,6 +4,7 @@ import {
   ShieldCheck, RefreshCw, Cpu, Save,
   CheckCircle2, AlertTriangle, Zap, Activity,
   Weight, Clock, Loader2, SwitchCamera,
+  Settings2, PackageOpen,
 } from 'lucide-react';
 import { motion } from 'motion/react';
 import { doc, updateDoc } from 'firebase/firestore';
@@ -121,8 +122,8 @@ export function DeviceSettings() {
     }
   };
 
-  // Calibration factor — editable, synced from Firestore
-  const [calibrationFactor, setCalibrationFactor] = useState<number>(1.0);
+  // Calibration factor — angka untuk kirim, string untuk input agar bisa diketik bebas
+  const [calibrationFactor, setCalibrationFactor] = useState<number>(404);
   const [savingCalib, setSavingCalib] = useState(false);
   const [calibSaved, setCalibSaved] = useState(false);
 
@@ -140,10 +141,11 @@ export function DeviceSettings() {
 
   const deviceDocRef = doc(db, 'devices', `${targetOwnerId}_device`);
 
-  // Sync from Firestore device data
+  // Sync dari Firestore / RTDB device data
   useEffect(() => {
     if (!device) return;
-    setCalibrationFactor((device as any).calibrationFactor ?? 1.0);
+    const val = (device as any).calibrationFactor ?? 404;
+    setCalibrationFactor(val);
     const prefs = (device as any).notifPrefs;
     if (prefs) setNotifPrefs(prefs);
   }, [device]);
@@ -208,6 +210,8 @@ export function DeviceSettings() {
   }
 
   const isOnline = device?.isOnline ?? false;
+  const stockPct = device?.foodStockLevel ?? 0;
+  const stockEmpty = stockPct === 0;
   const lastSeen = device?.lastPulse
     ? new Date(device.lastPulse).toLocaleString('id-ID', {
         day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit',
@@ -217,289 +221,351 @@ export function DeviceSettings() {
   const notifOptions = [
     {
       key: 'lowStock' as const,
+      icon: Database,
       label: 'Stok Pakan Hampir Habis',
-      desc: 'Notifikasi ketika stok di bawah 20%.',
+      desc: 'Peringatan muncul di dashboard saat stok < 20%.',
+      color: 'text-amber-500',
+      bg: 'bg-amber-50',
     },
     {
       key: 'feedSuccess' as const,
+      icon: CheckCircle2,
       label: 'Konfirmasi Pemberian Makan',
       desc: 'Notifikasi setiap kali pakan berhasil diberikan.',
+      color: 'text-green-500',
+      bg: 'bg-green-50',
     },
     {
       key: 'servoJam' as const,
+      icon: AlertTriangle,
       label: 'Servo Macet',
       desc: 'Peringatan kritis jika mekanisme dispenser terhambat.',
+      color: 'text-red-500',
+      bg: 'bg-red-50',
     },
   ];
 
   return (
-    <div className="space-y-10 pb-20 max-w-4xl">
+    <div className="space-y-8 pb-20 max-w-4xl">
 
       {/* ── HEADER ── */}
-      <div>
-        <h2 className="text-3xl font-black text-gray-900">Pengaturan Perangkat</h2>
-        <p className="text-gray-400 mt-1">Konfigurasi hardware ESP32 dan preferensi sistem.</p>
+      <div className="flex items-end justify-between">
+        <div>
+          <h2 className="text-3xl font-black text-gray-900">Pengaturan Perangkat</h2>
+          <p className="text-gray-400 mt-1 text-sm">Konfigurasi hardware ESP32 dan preferensi sistem.</p>
+        </div>
+        {device && (
+          <span className={cn(
+            'flex items-center gap-2 px-4 py-2 rounded-2xl text-sm font-black border',
+            isOnline
+              ? 'bg-green-50 text-green-700 border-green-100'
+              : 'bg-gray-50 text-gray-500 border-gray-200'
+          )}>
+            <span className={cn('w-2 h-2 rounded-full', isOnline ? 'bg-green-500 animate-pulse' : 'bg-gray-400')} />
+            {isOnline ? 'Online' : 'Offline'}
+          </span>
+        )}
       </div>
 
-      {/* ── CONNECTION STATUS ── */}
-      <section className="space-y-4">
-        <div className="flex items-center gap-3">
-          <Wifi className="w-5 h-5 text-blue-500" />
-          <h3 className="font-black text-xl text-gray-900">Status Koneksi</h3>
-        </div>
-
-        <div className={cn(
-          'rounded-3xl border p-6 flex items-center justify-between gap-4',
-          isOnline ? 'bg-green-50 border-green-100' : 'bg-gray-50 border-gray-200'
-        )}>
-          <div className="flex items-center gap-4">
-            <div className={cn(
-              'w-14 h-14 rounded-2xl flex items-center justify-center shrink-0',
-              isOnline ? 'bg-green-100' : 'bg-gray-100'
-            )}>
-              {isOnline
-                ? <Cpu className="w-7 h-7 text-green-600" />
-                : <WifiOff className="w-7 h-7 text-gray-400" />}
+      {/* ── STATUS CARD ── */}
+      <div className={cn(
+        'rounded-4xl border p-6 relative overflow-hidden',
+        isOnline ? 'bg-gray-900' : 'bg-gray-50 border-gray-200'
+      )}>
+        {isOnline && (
+          <div className="absolute top-0 right-0 p-8 opacity-5">
+            <Wifi className="w-48 h-48 text-white" />
+          </div>
+        )}
+        <div className="relative z-10">
+          <div className="flex items-center justify-between mb-5">
+            <div className="flex items-center gap-4">
+              <div className={cn(
+                'w-14 h-14 rounded-2xl flex items-center justify-center shrink-0',
+                isOnline ? 'bg-white/10' : 'bg-gray-100'
+              )}>
+                {isOnline
+                  ? <Cpu className="w-7 h-7 text-amber-400" />
+                  : <WifiOff className="w-7 h-7 text-gray-400" />}
+              </div>
+              <div>
+                <p className={cn('font-black text-lg', isOnline ? 'text-white' : 'text-gray-900')}>
+                  {device?.id ?? `${targetOwnerId}_device`}
+                </p>
+                <p className={cn('text-xs font-bold mt-0.5', isOnline ? 'text-gray-400' : 'text-gray-400')}>
+                  {isOnline ? '● Terhubung & aktif' : '○ Tidak ada koneksi'}
+                </p>
+              </div>
             </div>
-            <div>
-              <p className="font-black text-lg text-gray-900">
-                {device?.id ?? `${targetOwnerId}_device`}
+            <div className="text-right">
+              <p className={cn('text-[10px] font-medium', isOnline ? 'text-gray-500' : 'text-gray-400')}>
+                Terakhir aktif
               </p>
-              <div className="flex items-center gap-2 mt-1">
-                <span className={cn(
-                  'w-2 h-2 rounded-full shrink-0',
-                  isOnline ? 'bg-green-500 animate-pulse' : 'bg-gray-300'
-                )} />
-                <span className={cn(
-                  'text-sm font-bold',
-                  isOnline ? 'text-green-600' : 'text-gray-400'
-                )}>
-                  {isOnline ? 'Online — Terhubung' : 'Offline — Tidak ada koneksi'}
-                </span>
-              </div>
+              <p className={cn('text-sm font-black mt-0.5 flex items-center gap-1.5 justify-end', isOnline ? 'text-gray-300' : 'text-gray-600')}>
+                <Clock className="w-3.5 h-3.5" /> {lastSeen}
+              </p>
             </div>
           </div>
-          <div className="text-right shrink-0">
-            <p className="text-xs text-gray-400 font-medium">Terakhir aktif</p>
-            <p className="text-sm font-black text-gray-700 mt-0.5 flex items-center gap-1.5 justify-end">
-              <Clock className="w-3.5 h-3.5" />
-              {lastSeen}
-            </p>
-          </div>
+
+          {device ? (
+            <div className="grid grid-cols-3 gap-3">
+              {[
+                {
+                  label: 'Stok Pakan',
+                  value: `${stockPct}%`,
+                  icon: Database,
+                  color: stockPct < 20 ? 'text-red-400' : 'text-green-400',
+                  bg: isOnline ? 'bg-white/10' : (stockPct < 20 ? 'bg-red-50' : 'bg-green-50'),
+                },
+                {
+                  label: 'Berat Mangkuk',
+                  value: `${device.currentWeightOnScale}g`,
+                  icon: Weight,
+                  color: isOnline ? 'text-blue-300' : 'text-blue-600',
+                  bg: isOnline ? 'bg-white/10' : 'bg-blue-50',
+                },
+                {
+                  label: 'Servo',
+                  value: device.servoStatus === 'active' ? 'Aktif'
+                    : device.servoStatus === 'jammed' ? 'Macet' : 'Siaga',
+                  icon: Activity,
+                  color: device.servoStatus === 'active'
+                    ? 'text-amber-400'
+                    : device.servoStatus === 'jammed'
+                    ? 'text-red-400'
+                    : (isOnline ? 'text-green-400' : 'text-green-600'),
+                  bg: isOnline ? 'bg-white/10' : 'bg-green-50',
+                },
+              ].map((item) => (
+                <div key={item.label} className={cn('rounded-2xl p-4 flex items-center gap-3', item.bg)}>
+                  <item.icon className={cn('w-5 h-5 shrink-0', item.color)} />
+                  <div className="min-w-0">
+                    <p className={cn('text-[10px] font-medium truncate', isOnline ? 'text-gray-400' : 'text-gray-500')}>
+                      {item.label}
+                    </p>
+                    <p className={cn('font-black text-base', item.color)}>{item.value}</p>
+                  </div>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <div className="flex items-center gap-3 bg-orange-50 border border-orange-100 rounded-2xl px-4 py-3">
+              <AlertTriangle className="w-4 h-4 text-orange-400 shrink-0" />
+              <p className="text-xs text-orange-700 font-semibold">
+                ESP32 belum terhubung. Pastikan device menulis ke{' '}
+                <code className="font-black">devices/{targetOwnerId}_device</code>.
+              </p>
+            </div>
+          )}
         </div>
+      </div>
 
-        {/* Live metrics strip */}
-        {device && (
-          <div className="grid grid-cols-3 gap-3">
-            {[
-              {
-                label: 'Stok Pakan',
-                value: `${device.foodStockLevel}%`,
-                icon: Database,
-                color: device.foodStockLevel < 20 ? 'text-red-500' : 'text-green-600',
-                bg: device.foodStockLevel < 20 ? 'bg-red-50' : 'bg-green-50',
-              },
-              {
-                label: 'Berat Mangkok',
-                value: `${device.currentWeightOnScale}g`,
-                icon: Weight,
-                color: 'text-blue-600',
-                bg: 'bg-blue-50',
-              },
-              {
-                label: 'Status Servo',
-                value: device.servoStatus === 'active' ? 'Aktif'
-                  : device.servoStatus === 'jammed' ? 'Macet' : 'Siaga',
-                icon: Activity,
-                color: device.servoStatus === 'active' ? 'text-amber-600'
-                  : device.servoStatus === 'jammed' ? 'text-red-600' : 'text-green-600',
-                bg: device.servoStatus === 'active' ? 'bg-amber-50'
-                  : device.servoStatus === 'jammed' ? 'bg-red-50' : 'bg-green-50',
-              },
-            ].map((item) => (
-              <div key={item.label} className="bg-white border border-gray-100 rounded-2xl p-4 flex items-center gap-3">
-                <div className={cn('w-10 h-10 rounded-xl flex items-center justify-center shrink-0', item.bg)}>
-                  <item.icon className={cn('w-5 h-5', item.color)} />
-                </div>
-                <div>
-                  <p className="text-xs text-gray-400 font-medium">{item.label}</p>
-                  <p className={cn('font-black text-base', item.color)}>{item.value}</p>
-                </div>
-              </div>
-            ))}
-          </div>
-        )}
-
-        {!device && (
-          <div className="flex items-center gap-3 bg-orange-50 border border-orange-100 rounded-2xl px-5 py-4">
-            <AlertTriangle className="w-5 h-5 text-orange-400 shrink-0" />
-            <p className="text-sm text-orange-700 font-semibold">
-              Perangkat belum terhubung. ESP32 perlu menulis ke path <code className="font-black">devices/{targetOwnerId}_device</code> di Firestore.
-            </p>
-          </div>
-        )}
-      </section>
-
-      {/* ── MONITORING PERANGKAT ── */}
+      {/* ── KALIBRASI HARDWARE ── */}
       <section className="space-y-4">
         <div className="flex items-center gap-3">
-          <Cpu className="w-5 h-5 text-indigo-500" />
-          <h3 className="font-black text-xl text-gray-900">Monitoring Perangkat</h3>
-        </div>
-        <p className="text-sm text-gray-400">
-          Status real-time semua feeder yang terhubung ke akun ini.
-        </p>
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-          <DeviceCard device={devices[0]} deviceNumber={1} targetOwnerId={targetOwnerId} />
-          <DeviceCard device={devices[1]} deviceNumber={2} targetOwnerId={targetOwnerId} />
-        </div>
-      </section>
-
-      {/* ── HARDWARE CALIBRATION ── */}
-      <section className="space-y-4">
-        <div className="flex items-center gap-3">
-          <Scale className="w-5 h-5 text-amber-500" />
-          <h3 className="font-black text-xl text-gray-900">Kalibrasi Hardware</h3>
+          <div className="w-8 h-8 bg-amber-50 rounded-xl flex items-center justify-center border border-amber-100">
+            <Settings2 className="w-4 h-4 text-amber-500" />
+          </div>
+          <div>
+            <h3 className="font-black text-xl text-gray-900">Kalibrasi Hardware</h3>
+            <p className="text-xs text-gray-400">Load cell & servo motor</p>
+          </div>
         </div>
 
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
 
-          {/* Load cell calibration */}
-          <div className="bg-white border border-gray-100 rounded-3xl p-6 space-y-4 shadow-sm">
-            <p className="text-xs font-black uppercase tracking-widest text-gray-400">Load Cell — Faktor Kalibrasi</p>
+          {/* ── Load Cell ── */}
+          <div className="bg-white border border-gray-100 rounded-4xl p-6 shadow-sm space-y-5">
             <div className="flex items-center gap-3">
-              <input
-                type="number"
-                value={calibrationFactor}
-                step={1}
-                min={1}
-                max={100000}
-                title="Faktor kalibrasi load cell"
-                aria-label="Faktor kalibrasi load cell"
-                placeholder="2280"
-                onChange={(e) => setCalibrationFactor(parseFloat(e.target.value) || 1)}
-                className="flex-1 text-3xl font-black text-gray-900 border border-gray-200 rounded-2xl px-4 py-3 focus:outline-none focus:ring-2 focus:ring-amber-300"
-              />
+              <div className="w-10 h-10 bg-amber-50 rounded-2xl flex items-center justify-center border border-amber-100">
+                <Scale className="w-5 h-5 text-amber-500" />
+              </div>
+              <div>
+                <p className="font-black text-gray-900">Load Cell</p>
+                <p className="text-xs text-gray-400">Faktor kalibrasi timbangan</p>
+              </div>
             </div>
-            <p className="text-xs text-gray-400">
-              Disimpan ke RTDB path{' '}
-              <code className="font-black">devices/&#123;ID&#125;/calibration/loadCellFactor</code>.
-              ESP32 membacanya via <code className="font-black">readCalibrationFromRTDB()</code>.
-              Default firmware: <span className="font-bold text-gray-600">2280</span>.
-            </p>
+
+            {/* Tampilan nilai kalibrasi — read only */}
+            <div className="bg-amber-50 border border-amber-100 rounded-2xl px-5 py-4 flex items-center justify-between">
+              <div>
+                <p className="text-[10px] font-black uppercase tracking-widest text-amber-500 mb-1">Faktor Kalibrasi Aktif</p>
+                <p className="text-4xl font-black text-gray-900">{calibrationFactor}</p>
+              </div>
+              <Scale className="w-10 h-10 text-amber-200" />
+            </div>
+
+            <div className="bg-gray-50 rounded-2xl px-4 py-3 space-y-1">
+              <p className="text-[10px] font-black uppercase tracking-widest text-gray-400">RTDB Path</p>
+              <code className="text-xs font-bold text-gray-600 break-all">
+                devices/&#123;ID&#125;/calibration/loadCellFactor
+              </code>
+              <p className="text-[11px] text-gray-400 pt-1">
+                Default firmware: <span className="font-black text-gray-600">404</span> · Dibaca ESP32 via <code className="font-black">readCalibrationFromRTDB()</code>
+              </p>
+            </div>
+
             <button
               type="button"
               onClick={handleSaveCalibration}
               disabled={savingCalib}
               className={cn(
-                'w-full flex items-center justify-center gap-2 py-3 rounded-2xl font-bold text-sm transition-colors',
+                'w-full flex items-center justify-center gap-2 py-3.5 rounded-2xl font-black text-sm transition-all',
                 calibSaved
-                  ? 'bg-green-500 text-white'
-                  : 'bg-amber-500 hover:bg-amber-600 text-white'
+                  ? 'bg-green-500 text-white shadow-green-200 shadow-lg'
+                  : savingCalib
+                  ? 'bg-amber-300 text-white cursor-wait'
+                  : 'bg-amber-500 hover:bg-amber-400 text-white shadow-amber-200 shadow-lg hover:shadow-xl'
               )}
             >
               {savingCalib
-                ? <><Loader2 className="w-4 h-4 animate-spin" /> Menyimpan...</>
+                ? <><Loader2 className="w-4 h-4 animate-spin" /> Menyimpan ke ESP32...</>
                 : calibSaved
-                ? <><CheckCircle2 className="w-4 h-4" /> Tersimpan ke Firestore</>
-                : <><Save className="w-4 h-4" /> Simpan ke Firestore</>}
+                ? <><CheckCircle2 className="w-4 h-4" /> Tersimpan!</>
+                : <><Save className="w-4 h-4" /> Simpan Kalibrasi</>}
             </button>
           </div>
 
-          {/* Servo test */}
-          <div className="bg-white border border-gray-100 rounded-3xl p-6 space-y-4 shadow-sm">
-            <p className="text-xs font-black uppercase tracking-widest text-gray-400">Uji Servo</p>
-
-            {/* Servo range visual — MAX_SERVO_ANGLE = 35° */}
-            <div className="space-y-1.5">
-              <div className="flex items-center gap-2">
-                <span className="text-2xl font-black text-gray-900 shrink-0">0°</span>
-                <div className="flex-1 flex gap-1 h-3">
-                  {Array.from({ length: 7 }).map((_, i) => (
-                    <div
-                      key={i}
-                      className={cn(
-                        'flex-1 rounded-full transition-all',
-                        testingServo ? 'bg-amber-400 animate-pulse' : 'bg-amber-400'
-                      )}
-                    />
-                  ))}
-                  {Array.from({ length: 5 }).map((_, i) => (
-                    <div key={i + 7} className="flex-1 rounded-full bg-gray-100" />
-                  ))}
-                </div>
-                <span className="text-2xl font-black text-amber-500 shrink-0">35°</span>
+          {/* ── Servo Test ── */}
+          <div className="bg-white border border-gray-100 rounded-4xl p-6 shadow-sm space-y-5">
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 bg-gray-100 rounded-2xl flex items-center justify-center border border-gray-200">
+                <RefreshCw className="w-5 h-5 text-gray-600" />
               </div>
-              <p className="text-[10px] text-gray-400 text-center">
-                Range aktual: 0° → <span className="font-bold text-amber-600">35°</span>{' '}
-                (<code className="font-black">MAX_SERVO_ANGLE = 35</code>)
-              </p>
+              <div>
+                <p className="font-black text-gray-900">Uji Servo</p>
+                <p className="text-xs text-gray-400">Test siklus buka-tutup dispenser</p>
+              </div>
             </div>
 
-            <p className="text-xs text-gray-400">
-              Kirim command ke RTDB{' '}
-              <code className="font-black">devices/&#123;ID&#125;/command</code>.
-              Servo bergerak 0° → 35° → 0° lalu status kembali <code className="font-black">idle</code>.
-            </p>
+            {/* Servo range visual */}
+            <div className="bg-gray-50 rounded-2xl p-4 space-y-3">
+              <p className="text-[10px] font-black uppercase tracking-widest text-gray-400 text-center">
+                Range Servo Motor
+              </p>
+              <div className="flex items-center gap-2">
+                <span className="text-sm font-black text-gray-500 shrink-0 w-6 text-right">0°</span>
+                <div className="flex-1 flex gap-1 h-4">
+                  {Array.from({ length: 6 }).map((_, i) => (
+                    <div key={i} className={cn(
+                      'flex-1 rounded-full',
+                      testingServo ? 'bg-amber-400 animate-pulse' : 'bg-amber-400'
+                    )} />
+                  ))}
+                  {Array.from({ length: 6 }).map((_, i) => (
+                    <div key={i + 6} className="flex-1 rounded-full bg-gray-200" />
+                  ))}
+                </div>
+                <span className="text-sm font-black text-amber-500 shrink-0 w-8">30°</span>
+              </div>
+              <div className="flex items-center justify-between text-[10px] text-gray-400 px-1">
+                <span>Tutup</span>
+                <code className="font-black text-amber-500">MAX_SERVO_ANGLE = 30</code>
+                <span>Buka maks</span>
+              </div>
+            </div>
+
+            {/* Banner peringatan stok tidak kosong */}
+            {device && !stockEmpty && (
+              <div className="flex items-start gap-3 bg-orange-50 border border-orange-200 rounded-2xl px-4 py-3.5">
+                <div className="w-8 h-8 bg-orange-100 rounded-xl flex items-center justify-center shrink-0 mt-0.5">
+                  <PackageOpen className="w-4 h-4 text-orange-500" />
+                </div>
+                <div>
+                  <p className="text-sm font-black text-orange-700">
+                    Kosongkan wadah pakan dulu!
+                  </p>
+                  <p className="text-xs text-orange-500 mt-1 leading-relaxed">
+                    Stok terdeteksi{' '}
+                    <span className="font-black">{stockPct}%</span>. Uji servo saat
+                    hopper berisi akan menuang pakan secara tidak terencana.
+                    Keluarkan semua pakan, tunggu sensor baca{' '}
+                    <span className="font-black">0%</span>, baru uji.
+                  </p>
+                </div>
+              </div>
+            )}
+
+            {/* Banner siap test */}
+            {device && stockEmpty && !testingServo && (
+              <div className="flex items-center gap-2 bg-green-50 border border-green-100 rounded-2xl px-4 py-2.5">
+                <CheckCircle2 className="w-4 h-4 text-green-500 shrink-0" />
+                <p className="text-xs font-bold text-green-700">
+                  Wadah kosong — servo siap diuji.
+                </p>
+              </div>
+            )}
+
             <button
               type="button"
               onClick={handleTestServo}
-              disabled={testingServo || !device}
+              disabled={testingServo || !device || !stockEmpty}
               className={cn(
-                'w-full flex items-center justify-center gap-2 py-3 rounded-2xl font-bold text-sm transition-colors',
+                'w-full flex items-center justify-center gap-2 py-3.5 rounded-2xl font-black text-sm transition-all',
                 testingServo
-                  ? 'bg-green-100 text-green-700'
-                  : !device
+                  ? 'bg-blue-100 text-blue-700'
+                  : !device || !stockEmpty
                   ? 'bg-gray-100 text-gray-400 cursor-not-allowed'
-                  : 'bg-gray-900 hover:bg-gray-700 text-white'
+                  : 'bg-gray-900 hover:bg-gray-700 text-white shadow-gray-300 shadow-lg hover:shadow-xl'
               )}
             >
               {testingServo
-                ? <><Zap className="w-4 h-4 animate-pulse" /> Perintah terkirim — tunggu ESP32...</>
-                : <><RefreshCw className="w-4 h-4" /> Test Servo Cycle</>}
+                ? <><Zap className="w-4 h-4 animate-pulse" /> Mengeksekusi — tunggu ESP32...</>
+                : !stockEmpty
+                ? <><PackageOpen className="w-4 h-4" /> Kosongkan wadah dulu</>
+                : <><RefreshCw className="w-4 h-4" /> Jalankan Test Servo Cycle</>}
             </button>
           </div>
         </div>
       </section>
 
-      {/* ── NOTIFICATION PREFERENCES ── */}
+      {/* ── PREFERENSI NOTIFIKASI ── */}
       <section className="space-y-4">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-3">
-            <Bell className="w-5 h-5 text-blue-500" />
-            <h3 className="font-black text-xl text-gray-900">Preferensi Notifikasi</h3>
+            <div className="w-8 h-8 bg-blue-50 rounded-xl flex items-center justify-center border border-blue-100">
+              <Bell className="w-4 h-4 text-blue-500" />
+            </div>
+            <div>
+              <h3 className="font-black text-xl text-gray-900">Preferensi Notifikasi</h3>
+              <p className="text-xs text-gray-400">Pilih notifikasi yang ingin ditampilkan</p>
+            </div>
           </div>
           <button
             type="button"
             onClick={handleSaveNotif}
             disabled={savingNotif}
             className={cn(
-              'flex items-center gap-2 px-5 py-2.5 rounded-2xl font-bold text-sm transition-colors',
+              'flex items-center gap-2 px-5 py-2.5 rounded-2xl font-black text-sm transition-all',
               notifSaved
                 ? 'bg-green-500 text-white'
+                : savingNotif
+                ? 'bg-gray-300 text-white cursor-wait'
                 : 'bg-gray-900 hover:bg-gray-700 text-white'
             )}
           >
             {savingNotif
               ? <><Loader2 className="w-4 h-4 animate-spin" /> Menyimpan...</>
               : notifSaved
-              ? <><CheckCircle2 className="w-4 h-4" /> Tersimpan</>
+              ? <><CheckCircle2 className="w-4 h-4" /> Tersimpan!</>
               : <><Save className="w-4 h-4" /> Simpan</>}
           </button>
         </div>
 
-        <div className="bg-white rounded-3xl border border-gray-100 p-6 space-y-5 shadow-sm">
+        <div className="bg-white rounded-4xl border border-gray-100 divide-y divide-gray-50 shadow-sm overflow-hidden">
           {notifOptions.map((opt) => (
-            <div key={opt.key} className="flex items-start justify-between gap-4">
-              <div className="flex items-start gap-4">
+            <div key={opt.key} className="flex items-center justify-between gap-4 px-6 py-4 hover:bg-gray-50 transition-colors">
+              <div className="flex items-center gap-4">
                 <div className={cn(
-                  'mt-0.5 w-10 h-10 rounded-xl flex items-center justify-center shrink-0',
-                  notifPrefs[opt.key] ? 'bg-amber-50' : 'bg-gray-50'
+                  'w-10 h-10 rounded-2xl flex items-center justify-center shrink-0',
+                  notifPrefs[opt.key] ? opt.bg : 'bg-gray-50'
                 )}>
-                  <Bell className={cn('w-5 h-5', notifPrefs[opt.key] ? 'text-amber-500' : 'text-gray-300')} />
+                  <opt.icon className={cn('w-5 h-5', notifPrefs[opt.key] ? opt.color : 'text-gray-300')} />
                 </div>
                 <div>
-                  <p className="font-bold text-gray-800">{opt.label}</p>
+                  <p className={cn('font-bold text-sm', notifPrefs[opt.key] ? 'text-gray-900' : 'text-gray-400')}>
+                    {opt.label}
+                  </p>
                   <p className="text-xs text-gray-400 mt-0.5">{opt.desc}</p>
                 </div>
               </div>
@@ -508,74 +574,85 @@ export function DeviceSettings() {
                 aria-label={`Toggle ${opt.label}`}
                 onClick={() => handleToggleNotif(opt.key)}
                 className={cn(
-                  'w-12 h-6 rounded-full relative transition-colors shrink-0 mt-1',
+                  'w-12 h-6 rounded-full relative transition-colors shrink-0',
                   notifPrefs[opt.key] ? 'bg-amber-400' : 'bg-gray-200'
                 )}
               >
                 <motion.div
-                  animate={{ left: notifPrefs[opt.key] ? '50%' : '4px' }}
-                  transition={{ type: 'spring', stiffness: 500, damping: 30 }}
+                  animate={{ left: notifPrefs[opt.key] ? '26px' : '3px' }}
+                  transition={{ type: 'spring', stiffness: 600, damping: 35 }}
                   className="absolute top-1 w-4 h-4 bg-white rounded-full shadow-sm"
                 />
               </button>
             </div>
           ))}
         </div>
-        <p className="text-xs text-gray-400 px-1">
-          Preferensi ini disimpan di Firestore dan dibaca oleh app saat menampilkan notifikasi.
-        </p>
       </section>
 
-      {/* ── DEVICE MANAGEMENT ── */}
+      {/* ── GANTI PERANGKAT ── */}
       <section className="space-y-4">
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <Cpu className="w-5 h-5 text-purple-500" />
-            <h3 className="font-black text-xl text-gray-900">Perangkat Aktif</h3>
+        <div className="flex items-center gap-3">
+          <div className="w-8 h-8 bg-red-50 rounded-xl flex items-center justify-center border border-red-100">
+            <SwitchCamera className="w-4 h-4 text-red-500" />
           </div>
-          {!showReleaseConfirm && (
+          <div>
+            <h3 className="font-black text-xl text-gray-900">Ganti Perangkat</h3>
+            <p className="text-xs text-gray-400">Lepas feeder aktif & klaim yang baru</p>
+          </div>
+        </div>
+
+        {!showReleaseConfirm ? (
+          <div className="bg-gray-50 border border-gray-200 rounded-4xl p-6 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+            <div>
+              <p className="font-bold text-gray-800 text-sm">Perangkat aktif:</p>
+              <code className="text-base font-black text-gray-700 mt-0.5 block break-all">
+                {selectedDeviceId || devices[0]?.id || `${targetOwnerId}_device`}
+              </code>
+              <p className="text-xs text-gray-400 mt-1">
+                Melepas perangkat tidak menghapus profil kucing & jadwal pakan.
+              </p>
+            </div>
             <button
               type="button"
               onClick={() => setShowReleaseConfirm(true)}
-              className="flex items-center gap-2 px-4 py-2 rounded-2xl bg-black hover:bg-gray-800 text-white text-sm font-bold transition-colors"
+              className="shrink-0 flex items-center gap-2 px-5 py-2.5 rounded-2xl bg-red-500 hover:bg-red-600 text-white text-sm font-black transition-colors shadow-red-200 shadow-md"
             >
               <SwitchCamera className="w-4 h-4" />
-              Ganti Perangkat
+              Lepas &amp; Ganti
             </button>
-          )}
-        </div>
-        <p className="text-sm text-gray-400">
-          Untuk beralih ke feeder lain, perangkat saat ini harus dilepas terlebih dahulu.
-          Setelah dilepas, kamu bisa memilih dan mengklaim perangkat baru.
-        </p>
-
-        {/* Konfirmasi lepas perangkat */}
-        {showReleaseConfirm && (
+          </div>
+        ) : (
           <motion.div
-            initial={{ opacity: 0, y: -6 }}
-            animate={{ opacity: 1, y: 0 }}
-            className="bg-red-50 border border-red-200 rounded-3xl p-5 space-y-4"
+            initial={{ opacity: 0, scale: 0.97 }}
+            animate={{ opacity: 1, scale: 1 }}
+            className="bg-red-50 border-2 border-red-200 rounded-4xl p-6 space-y-4"
           >
-            <div className="flex items-start gap-3">
-              <AlertTriangle className="w-5 h-5 text-red-500 shrink-0 mt-0.5" />
+            <div className="flex items-start gap-4">
+              <div className="w-12 h-12 bg-red-100 rounded-2xl flex items-center justify-center shrink-0">
+                <AlertTriangle className="w-6 h-6 text-red-500" />
+              </div>
               <div>
-                <p className="font-black text-red-800">Lepas perangkat ini?</p>
-                <p className="text-sm text-red-600 mt-1">
-                  Perangkat <strong>{devices[0]?.name ?? devices[0]?.id ?? '—'}</strong> akan dilepas dari akun kamu.
-                  Kamu akan diarahkan ke halaman <strong>Klaim Perangkat</strong> untuk memilih feeder baru.
-                  Profil kucing dan jadwal pakan tetap tersimpan.
+                <p className="font-black text-lg text-red-800">Konfirmasi Lepas Perangkat</p>
+                <p className="text-sm text-red-600 mt-1 leading-relaxed">
+                  Perangkat <strong>{devices[0]?.name ?? devices[0]?.id ?? '—'}</strong> akan
+                  dilepas dari akun ini. Kamu akan diarahkan ke halaman{' '}
+                  <strong>Klaim Perangkat</strong> untuk memilih feeder baru.
+                  Profil kucing dan jadwal pakan <strong>tetap tersimpan</strong>.
                 </p>
               </div>
             </div>
             {releaseError && (
-              <p className="text-sm text-red-600 font-semibold">{releaseError}</p>
+              <div className="flex items-center gap-2 bg-red-100 rounded-xl px-4 py-2.5">
+                <AlertTriangle className="w-4 h-4 text-red-600 shrink-0" />
+                <p className="text-sm text-red-700 font-semibold">{releaseError}</p>
+              </div>
             )}
-            <div className="flex gap-3">
+            <div className="flex gap-3 pt-1">
               <button
                 type="button"
                 onClick={() => { setShowReleaseConfirm(false); setReleaseError(null); }}
                 disabled={releasing}
-                className="flex-1 py-2.5 rounded-2xl border border-gray-200 text-sm font-bold text-gray-600 hover:bg-gray-50 transition-colors disabled:opacity-50"
+                className="flex-1 py-3 rounded-2xl border-2 border-gray-200 text-sm font-black text-gray-600 hover:bg-white transition-colors disabled:opacity-50"
               >
                 Batal
               </button>
@@ -583,7 +660,7 @@ export function DeviceSettings() {
                 type="button"
                 onClick={handleReleaseDevice}
                 disabled={releasing}
-                className="flex-1 py-2.5 rounded-2xl bg-red-500 hover:bg-red-600 text-white text-sm font-black transition-colors disabled:opacity-60 flex items-center justify-center gap-2"
+                className="flex-1 py-3 rounded-2xl bg-red-500 hover:bg-red-600 text-white text-sm font-black transition-colors disabled:opacity-60 flex items-center justify-center gap-2 shadow-red-200 shadow-md"
               >
                 {releasing
                   ? <><Loader2 className="w-4 h-4 animate-spin" /> Melepas...</>
@@ -592,38 +669,20 @@ export function DeviceSettings() {
             </div>
           </motion.div>
         )}
-
-        {/* Selected device info */}
-        <div className="bg-gray-50 border border-gray-200 rounded-3xl p-5 space-y-3">
-          <p className="text-[10px] font-black uppercase tracking-widest text-gray-400">Device ID Aktif</p>
-          <code className="text-base font-black text-gray-800 break-all block">
-            {selectedDeviceId || `${targetOwnerId}_device`}
-          </code>
-          <div className="h-px bg-gray-200" />
-          {(() => {
-            const activeDevice = devices.find((d) => d.id === selectedDeviceId) ?? devices[0];
-            const num = activeDevice?.deviceNumber ?? 1;
-            return (
-              <DeviceCard
-                device={activeDevice}
-                deviceNumber={num as 1 | 2}
-                targetOwnerId={targetOwnerId}
-              />
-            );
-          })()}
-        </div>
       </section>
 
-      {/* ── CLOUD SYNC INFO ── */}
-      <div className="flex gap-4 p-6 bg-gray-900 rounded-3xl text-white">
+      {/* ── CLOUD SYNC FOOTER ── */}
+      <div className="flex gap-4 p-6 bg-gray-900 rounded-4xl text-white">
         <div className="w-12 h-12 bg-white/10 rounded-2xl flex items-center justify-center shrink-0">
           <ShieldCheck className="w-6 h-6 text-amber-400" />
         </div>
         <div>
-          <p className="font-black text-lg">Cloud Synced via Firestore</p>
-          <p className="text-sm text-white/60 mt-1 leading-relaxed">
-            Semua perubahan disimpan ke Firestore secara real-time. ESP32 membaca konfigurasi dari path{' '}
-            <code className="text-amber-400 font-black">devices/{targetOwnerId}_device</code> setiap boot dan saat ada perubahan.
+          <p className="font-black text-base">Cloud Synced via Firebase</p>
+          <p className="text-sm text-white/50 mt-1 leading-relaxed">
+            Perubahan kalibrasi disimpan ke RTDB & Firestore secara real-time.
+            ESP32 membaca dari{' '}
+            <code className="text-amber-400 font-black">devices/&#123;ID&#125;/calibration</code>{' '}
+            setiap boot.
           </p>
           <div className="flex items-center gap-2 mt-3 text-xs font-black uppercase tracking-widest text-amber-400">
             <span className="w-2 h-2 bg-amber-400 rounded-full animate-ping" />
