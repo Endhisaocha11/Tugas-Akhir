@@ -45,8 +45,7 @@ export function useCatData(): CatData {
   const [allCatIds, setAllCatIds]       = useState<string[]>([]);
   const [devices, setDevices]           = useState<DeviceStatus[]>([]);
   const [rtdbDeviceData, setRtdbDeviceData] = useState<Record<string, any> | null>(null);
-  const [lastRtdbTs, setLastRtdbTs]     = useState<number>(0);   // kapan data RTDB terakhir berubah
-  const [staleCheck, setStaleCheck]     = useState<number>(0);   // ticker 30 detik untuk cek stale
+  const [staleCheck, setStaleCheck]     = useState<number>(0);   // ticker 30 detik agar isOnline dievaluasi ulang
   const [feedingLogs, setFeedingLogs]   = useState<FeedingLog[]>([]);
   const [profileHistory, setProfileHistory] = useState<CatProfileSnapshot[]>([]);
   const [loading, setLoading]           = useState(true);
@@ -128,13 +127,7 @@ export function useCatData(): CatData {
     // 2a. Telemetri live (isOnline, weight, servo, dll.)
     const deviceRtdbRef = ref(rtdb, `devices/${claimedDeviceId}`);
     const unsubTelemetry = onValue(deviceRtdbRef, (snapshot) => {
-      if (snapshot.exists()) {
-        setRtdbDeviceData(snapshot.val());
-        setLastRtdbTs(Date.now());   // catat kapan data terakhir diterima
-      } else {
-        setRtdbDeviceData(null);
-        setLastRtdbTs(0);
-      }
+      setRtdbDeviceData(snapshot.exists() ? snapshot.val() : null);
     });
 
     // 2b. Deteksi jadwal otomatis selesai dari ESP32
@@ -229,10 +222,24 @@ export function useCatData(): CatData {
   }, [cat, targetOwnerId]);
 
   // ── Gabung Firestore claim metadata + RTDB telemetri ─────────────────────
-  // Data RTDB dianggap "hidup" jika diterima dalam 90 detik terakhir
-  // staleCheck memicu evaluasi ulang setiap 30 detik agar Date.now() selalu segar
-  const STALE_MS = 90_000;
-  const isRtdbLive = staleCheck >= 0 && lastRtdbTs > 0 && (Date.now() - lastRtdbTs) < STALE_MS;
+  // Bandingkan field `time` (HH:MM:SS dari ESP32) dengan jam browser sekarang.
+  // Jika selisih > 2 menit → data basi → device offline.
+  // staleCheck (ticker 30 detik) memaksa re-evaluasi agar Date bergerak.
+  const isRtdbLive = (() => {
+    void staleCheck; // reactive trigger
+    const timeStr = rtdbDeviceData?.time as string | undefined;
+    if (!timeStr) return false;
+    try {
+      const [h, m, s] = timeStr.split(':').map(Number);
+      if (isNaN(h) || isNaN(m) || isNaN(s)) return false;
+      const now = new Date();
+      const devSec = h * 3600 + m * 60 + s;
+      const nowSec = now.getHours() * 3600 + now.getMinutes() * 60 + now.getSeconds();
+      let diffSec = Math.abs(nowSec - devSec);
+      if (diffSec > 43200) diffSec = 86400 - diffSec; // tengah malam crossover
+      return diffSec < 120; // toleransi 2 menit
+    } catch { return false; }
+  })();
 
   const fsDevice = devices[0] ?? null;
   const device: DeviceStatus | null = fsDevice

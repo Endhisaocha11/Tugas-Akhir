@@ -546,18 +546,14 @@ export function FeedingControl() {
     );
   }
 
-  const primaryDevice = devices[0];
-  const secondaryDevice = devices[1];
-  const device1Id = primaryDevice?.id ?? '';
-  const device2Id = secondaryDevice?.id ?? '';
 
   return (
-    <div className="flex-1 flex flex-col gap-5 md:gap-8 w-full">
+    <div className="flex-1 flex flex-col gap-4 w-full">
 
       {/* ── HEADER ── */}
       <div>
-        <h2 className="text-2xl md:text-5xl font-black text-gray-900">Feeding Control</h2>
-        <p className="text-gray-400 mt-1 text-sm md:text-lg">
+        <h2 className="text-2xl md:text-3xl font-black text-gray-900">Feeding Control</h2>
+        <p className="text-gray-400 mt-1 text-sm">
           Kontrol pemberian makan langsung ke PawfectCare.
         </p>
       </div>
@@ -567,9 +563,9 @@ export function FeedingControl() {
         <motion.div
           initial={{ opacity: 0, y: -12 }}
           animate={{ opacity: 1, y: 0 }}
-          className="flex items-center gap-4 bg-red-50 border border-red-200 rounded-3xl px-6 py-4"
+          className="flex items-center gap-4 bg-red-50 border border-red-200 rounded-3xl px-4 py-3"
         >
-          <div className="w-11 h-11 rounded-2xl bg-red-100 flex items-center justify-center shrink-0">
+          <div className="w-9 h-9 rounded-2xl bg-red-100 flex items-center justify-center shrink-0">
             <BanIcon className="w-5 h-5 text-red-500" />
           </div>
           <div className="flex-1">
@@ -587,9 +583,9 @@ export function FeedingControl() {
 
       {/* ── DEVICE STATUS BANNERS ── */}
       {devices.length === 0 && (
-        <div className="flex items-center justify-between gap-4 bg-orange-50 border border-orange-200 rounded-3xl px-6 py-4">
+        <div className="flex items-center justify-between gap-4 bg-orange-50 border border-orange-200 rounded-3xl px-4 py-3">
           <div className="flex items-center gap-4">
-            <div className="w-11 h-11 rounded-2xl bg-orange-100 flex items-center justify-center shrink-0">
+            <div className="w-9 h-9 rounded-2xl bg-orange-100 flex items-center justify-center shrink-0">
               <WifiOff className="w-5 h-5 text-orange-500" />
             </div>
             <div>
@@ -607,46 +603,27 @@ export function FeedingControl() {
         </div>
       )}
 
-      {devices.length > 0 && !devices.some((d) => d.isOnline) && (
-        <div className="flex items-center gap-4 bg-gray-50 border border-gray-200 rounded-3xl px-6 py-4">
-          <div className="w-11 h-11 rounded-2xl bg-gray-100 flex items-center justify-center shrink-0">
-            <WifiOff className="w-5 h-5 text-gray-400" />
-          </div>
-          <div className="flex-1">
-            <p className="font-bold text-gray-600">Semua perangkat offline</p>
-            <p className="text-sm text-gray-400 mt-0.5">Jadwal otomatis tidak berjalan saat perangkat mati.</p>
-          </div>
-          <button
-            type="button"
-            onClick={() => setShowDeviceInfo(true)}
-            className="shrink-0 px-4 py-2 rounded-2xl bg-gray-200 hover:bg-gray-300 text-gray-600 text-sm font-bold transition-colors"
-          >
-            Info
-          </button>
-        </div>
-      )}
-
       {/* ── CONNECT DEVICE INFO MODAL ── */}
       {showDeviceInfo && (
         <div
           className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40 backdrop-blur-sm"
           onClick={(e) => { if (e.target === e.currentTarget) setShowDeviceInfo(false); }}
         >
-          <div className="bg-white rounded-4xl p-5 md:p-8 w-full max-w-md shadow-2xl relative">
+          <div className="bg-white rounded-4xl p-5 w-full max-w-md shadow-2xl relative">
             <button
               type="button"
               title="Tutup"
               onClick={() => setShowDeviceInfo(false)}
-              className="absolute top-5 right-5 w-10 h-10 rounded-2xl bg-gray-100 flex items-center justify-center text-gray-400 hover:bg-gray-200 transition-colors"
+              className="absolute top-4 right-4 w-8 h-8 rounded-2xl bg-gray-100 flex items-center justify-center text-gray-400 hover:bg-gray-200 transition-colors"
             >
               ✕
             </button>
-            <div className="flex items-center gap-4 mb-6">
-              <div className="w-14 h-14 bg-orange-50 rounded-3xl flex items-center justify-center shrink-0">
-                <WifiOff className="w-6 h-6 text-orange-500" />
+            <div className="flex items-center gap-4 mb-5">
+              <div className="w-10 h-10 bg-orange-50 rounded-3xl flex items-center justify-center shrink-0">
+                <WifiOff className="w-5 h-5 text-orange-500" />
               </div>
               <div>
-                <h3 className="text-2xl font-black text-gray-900">Hubungkan ESP32</h3>
+                <h3 className="text-lg font-black text-gray-900">Hubungkan ESP32</h3>
                 <p className="text-sm text-gray-400">Salin UID ini ke firmware perangkat</p>
               </div>
             </div>
@@ -684,20 +661,20 @@ export function FeedingControl() {
 
       {/* ── SMART FEED TOGGLE ── */}
       <div className={cn(
-        'rounded-4xl p-7 border flex items-center gap-6 transition-all',
+        'rounded-4xl p-4 border flex items-center gap-4 transition-all',
         smartFeedEnabled ? 'bg-amber-50 border-amber-200' : 'bg-gray-50 border-gray-200'
       )}>
         <div className={cn(
-          'w-14 h-14 rounded-2xl flex items-center justify-center shrink-0',
+          'w-10 h-10 rounded-2xl flex items-center justify-center shrink-0',
           smartFeedEnabled ? 'bg-amber-100' : 'bg-gray-100'
         )}>
-          {smartFeedEnabled ? <Zap className="w-7 h-7 text-amber-500" /> : <ZapOff className="w-7 h-7 text-gray-400" />}
+          {smartFeedEnabled ? <Zap className="w-5 h-5 text-amber-500" /> : <ZapOff className="w-5 h-5 text-gray-400" />}
         </div>
         <div className="flex-1 min-w-0">
-          <p className={cn('font-black text-2xl', smartFeedEnabled ? 'text-amber-900' : 'text-gray-600')}>
+          <p className={cn('font-black text-base', smartFeedEnabled ? 'text-amber-900' : 'text-gray-600')}>
             {smartFeedEnabled ? 'Smart Feed Aktif' : 'Smart Feed Nonaktif — Mode Manual Saja'}
           </p>
-          <p className="text-base text-gray-500 mt-1">
+          <p className="text-sm text-gray-500 mt-0.5">
             {smartFeedEnabled
               ? 'Jadwal otomatis berjalan. Pemberian manual tetap tersedia.'
               : 'Jadwal otomatis dimatikan. Hanya pemberian manual yang dapat dilakukan.'}
@@ -720,21 +697,21 @@ export function FeedingControl() {
       </div>
 
       {/* ── TWO CARDS ── */}
-      <div className="flex-1 grid grid-cols-1 xl:grid-cols-2 gap-5 md:gap-8">
+      <div className="flex-1 grid grid-cols-1 xl:grid-cols-2 gap-4">
 
         {/* ── MANUAL FEED CARD ── */}
-        <div className="card-premium p-5 md:p-8 rounded-4xl relative overflow-hidden flex flex-col gap-5 md:gap-6">
+        <div className="card-premium p-5 rounded-4xl relative overflow-hidden flex flex-col gap-4">
           <div className="absolute top-0 right-0 w-56 h-56 bg-amber-50 rounded-full -mr-28 -mt-28 pointer-events-none" />
 
           {/* Header */}
           <div className="relative z-10 flex items-center justify-between">
-            <div className="flex items-center gap-4">
-              <div className="w-14 h-14 bg-amber-50 rounded-3xl flex items-center justify-center shrink-0">
-                <Play className="text-amber-500 w-6 h-6 fill-current" />
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 bg-amber-50 rounded-3xl flex items-center justify-center shrink-0">
+                <Play className="text-amber-500 w-4 h-4 fill-current" />
               </div>
               <div>
-                <h3 className="text-2xl font-black text-gray-900">Pemberian Manual</h3>
-                <p className="text-base text-gray-400">Kirim porsi sekarang ke perangkat</p>
+                <h3 className="text-base font-black text-gray-900">Pemberian Manual</h3>
+                <p className="text-sm text-gray-400">Kirim porsi sekarang ke perangkat</p>
               </div>
             </div>
           </div>
@@ -743,23 +720,23 @@ export function FeedingControl() {
           <div className="relative z-10">
             <p className="text-xs font-black uppercase tracking-widest text-gray-400 mb-2">Kirim ke perangkat</p>
             <div className="flex gap-2">
-              {[{ id: device1Id, label: 'Feeder ESP 1', dev: primaryDevice }, { id: device2Id, label: 'Feeder ESP 2', dev: secondaryDevice }].map(({ id, label, dev }) => (
+              {devices.map((dev, idx) => (
                 <button
-                  key={id}
+                  key={dev.id}
                   type="button"
-                  onClick={() => setSelectedDeviceId(id)}
+                  onClick={() => setSelectedDeviceId(dev.id)}
                   className={cn(
                     'flex-1 py-2.5 px-4 rounded-2xl border-2 text-sm font-black transition-all flex items-center justify-center gap-2',
-                    selectedDeviceId === id
+                    selectedDeviceId === dev.id
                       ? 'border-amber-400 bg-amber-50 text-amber-700'
                       : 'border-gray-200 bg-white text-gray-500 hover:border-amber-200'
                   )}
                 >
                   <div className={cn(
                     'w-2 h-2 rounded-full shrink-0',
-                    dev?.isOnline ? 'bg-green-400' : 'bg-gray-300'
+                    dev.isOnline ? 'bg-green-400' : 'bg-gray-300'
                   )} />
-                  {label}
+                  {dev.deviceName ?? `Feeder ESP ${idx + 1}`}
                 </button>
               ))}
             </div>
@@ -841,7 +818,7 @@ export function FeedingControl() {
               )}
             </div>
 
-            <div className="flex items-center gap-4 bg-gray-50 px-4 py-4 md:px-7 md:py-6 rounded-3xl overflow-hidden">
+            <div className="flex items-center gap-4 bg-gray-50 px-4 py-4 rounded-3xl overflow-hidden">
               <div className="flex-1 pr-2">
                 <input
                   aria-label="Ukuran Porsi"
@@ -880,9 +857,9 @@ export function FeedingControl() {
                     setFeedingAmount(clamped);
                     setPortionInputStr(String(clamped));
                   }}
-                  className="w-20 md:w-28 text-3xl md:text-5xl font-black text-amber-500 leading-none text-right bg-transparent border-b-2 border-amber-200 focus:border-amber-500 focus:outline-none"
+                  className="w-20 text-3xl font-black text-amber-500 leading-none text-right bg-transparent border-b-2 border-amber-200 focus:border-amber-500 focus:outline-none"
                 />
-                <span className="text-xl md:text-2xl font-black text-amber-500 ml-1">g</span>
+                <span className="text-lg font-black text-amber-500 ml-1">g</span>
               </div>
             </div>
 
@@ -1005,7 +982,7 @@ export function FeedingControl() {
                 className="px-5 py-4 bg-amber-50 border border-amber-200 rounded-2xl space-y-3"
               >
                 <p className="text-base font-black text-amber-800">
-                  Konfirmasi: kirim {feedingAmount}g ke {selectedDevice?.name ?? `Feeder ESP ${selectedDeviceId === device2Id ? 2 : 1}`}?
+                  Konfirmasi: kirim {feedingAmount}g ke {selectedDevice?.deviceName ?? selectedDevice?.id ?? 'perangkat'}?
                 </p>
                 <div className="flex gap-3">
                   <button
@@ -1037,7 +1014,7 @@ export function FeedingControl() {
                 }}
                 disabled={!isDeviceOnline || isAtDailyLimit || wouldExceed || feedingAmount < 5}
                 className={cn(
-                  'w-full py-5 rounded-3xl font-black text-lg md:text-xl flex items-center justify-center gap-3 transition-all',
+                  'w-full py-3.5 rounded-3xl font-black text-sm flex items-center justify-center gap-2 transition-all',
                   !isDeviceOnline
                     ? 'bg-gray-100 text-gray-400 cursor-not-allowed'
                     : isAtDailyLimit
@@ -1050,13 +1027,13 @@ export function FeedingControl() {
                 )}
               >
                 {!isDeviceOnline ? (
-                  <><WifiOff className="w-6 h-6 shrink-0" /> Perangkat Offline</>
+                  <><WifiOff className="w-4 h-4 shrink-0" /> Perangkat Offline</>
                 ) : isAtDailyLimit ? (
-                  <><BanIcon className="w-6 h-6 shrink-0" /> Batas harian tercapai</>
+                  <><BanIcon className="w-4 h-4 shrink-0" /> Batas harian tercapai</>
                 ) : wouldExceed ? (
-                  <><AlertTriangle className="w-6 h-6 shrink-0" /> Kurangi porsi agar tidak berlebih</>
+                  <><AlertTriangle className="w-4 h-4 shrink-0" /> Kurangi porsi agar tidak berlebih</>
                 ) : (
-                  <><Utensils className="w-6 h-6 shrink-0" /> Beri Makan Sekarang</>
+                  <><Utensils className="w-4 h-4 shrink-0" /> Beri Makan Sekarang</>
                 )}
               </button>
             )}
@@ -1112,17 +1089,17 @@ export function FeedingControl() {
         </div>
 
         {/* ── SCHEDULE CARD ── */}
-        <div className="card-premium p-5 md:p-8 rounded-4xl relative flex flex-col gap-5">
+        <div className="card-premium p-5 rounded-4xl relative flex flex-col gap-4">
 
           {/* Header */}
           <div className="flex items-center justify-between shrink-0">
-            <div className="flex items-center gap-4">
-              <div className="w-14 h-14 bg-blue-50 rounded-3xl flex items-center justify-center shrink-0">
-                <Clock className="text-blue-500 w-6 h-6" />
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 bg-blue-50 rounded-3xl flex items-center justify-center shrink-0">
+                <Clock className="text-blue-500 w-4 h-4" />
               </div>
               <div>
-                <h3 className="text-2xl font-black text-gray-900">Jadwal Otomatis</h3>
-                <p className="text-base text-gray-400">
+                <h3 className="text-base font-black text-gray-900">Jadwal Otomatis</h3>
+                <p className="text-sm text-gray-400">
                   {schedule.filter((s) => s.active !== false).length} dari {schedule.length} slot aktif · 6x/hari
                 </p>
               </div>
@@ -1177,7 +1154,7 @@ export function FeedingControl() {
               return editingIndex === index ? (
                 <div
                   key={`${slot.time}-${index}-edit`}
-                  className="px-6 py-5 rounded-3xl border-2 border-blue-200 bg-blue-50 space-y-4"
+                  className="px-4 py-3 rounded-3xl border-2 border-blue-200 bg-blue-50 space-y-3"
                 >
                   <p className="font-black text-blue-800 text-base">Edit Slot</p>
                   <div className="flex gap-4">
@@ -1220,7 +1197,7 @@ export function FeedingControl() {
                 <div
                   key={`${slot.time}-${index}`}
                   className={cn(
-                    'group flex items-center justify-between px-6 py-5 rounded-3xl border transition-all',
+                    'group flex items-center justify-between px-4 py-3 rounded-3xl border transition-all',
                     !smartFeedEnabled || isAtDailyLimit
                       ? 'bg-gray-50 border-gray-200 opacity-50 grayscale'
                       : slot.active !== false
@@ -1228,16 +1205,16 @@ export function FeedingControl() {
                       : 'bg-gray-50 border-gray-100 opacity-60'
                   )}
                 >
-                  <div className="flex items-center gap-5">
-                    <span className="text-3xl">{getSlotIcon(slot.time)}</span>
+                  <div className="flex items-center gap-3">
+                    <span className="text-2xl">{getSlotIcon(slot.time)}</span>
                     <div>
-                      <p className="font-black text-gray-900 text-xl">{slot.time}</p>
-                      <p className="text-sm text-gray-400">{slot.label ?? getSlotLabel(slot.time)}</p>
+                      <p className="font-black text-gray-900 text-sm">{slot.time}</p>
+                      <p className="text-xs text-gray-400">{slot.label ?? getSlotLabel(slot.time)}</p>
                     </div>
-                    <div className="w-px h-10 bg-gray-100" />
+                    <div className="w-px h-8 bg-gray-100" />
                     <div>
                       <div className="flex items-baseline gap-2">
-                        <p className={cn('font-black text-xl', wasAdjusted ? 'text-indigo-500' : 'text-amber-500')}>
+                        <p className={cn('font-black text-sm', wasAdjusted ? 'text-indigo-500' : 'text-amber-500')}>
                           {displayAmount}g
                         </p>
                         {wasAdjusted && (
@@ -1293,7 +1270,7 @@ export function FeedingControl() {
                 <Settings2 className={cn('w-5 h-5', smartFeedEnabled ? 'text-amber-500' : 'text-gray-400')} />
               </div>
               <div className="flex-1 min-w-0">
-                <p className={cn('text-lg font-black', smartFeedEnabled ? 'text-gray-700' : 'text-gray-400')}>
+                <p className={cn('text-sm font-black', smartFeedEnabled ? 'text-gray-700' : 'text-gray-400')}>
                   {smartFeedEnabled ? 'Smart Adjustment' : 'Kontrol Otomatis Off'}
                 </p>
                 <p className="text-sm text-gray-400">
@@ -1326,14 +1303,14 @@ export function FeedingControl() {
         <button
           type="button"
           onClick={() => setShowHistory((v) => !v)}
-          className="w-full flex items-center justify-between px-4 py-4 md:px-8 md:py-6 hover:bg-gray-50 transition-colors"
+          className="w-full flex items-center justify-between px-4 py-4 hover:bg-gray-50 transition-colors"
         >
-          <div className="flex items-center gap-4">
-            <div className="w-12 h-12 bg-purple-50 rounded-2xl flex items-center justify-center shrink-0">
-              <History className="w-5 h-5 text-purple-500" />
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 bg-purple-50 rounded-2xl flex items-center justify-center shrink-0">
+              <History className="w-4 h-4 text-purple-500" />
             </div>
             <div className="text-left">
-              <h3 className="text-xl font-black text-gray-900">Riwayat Penggunaan Kucing</h3>
+              <h3 className="text-base font-black text-gray-900">Riwayat Penggunaan Kucing</h3>
               <p className="text-sm text-gray-400">
                 {usageDays.length > 0
                   ? `${usageDays.length} hari terakhir — total ${usageDays.reduce((s, [, d]) => s + d.count, 0)} kali pemberian`
@@ -1347,7 +1324,7 @@ export function FeedingControl() {
         </button>
 
         {showHistory && (
-          <div className="px-4 pb-4 md:px-8 md:pb-6 border-t border-gray-100">
+          <div className="px-4 pb-4 border-t border-gray-100">
             {usageDays.length === 0 ? (
               <div className="py-10 text-center text-gray-400">
                 <History className="w-10 h-10 mx-auto mb-3 opacity-30" />
@@ -1390,7 +1367,7 @@ export function FeedingControl() {
                   },
                 ].map(({ label, value }) => (
                   <div key={label} className="bg-gray-50 rounded-2xl p-4 text-center">
-                    <p className="text-xl font-black text-gray-800">{value}</p>
+                    <p className="text-base font-black text-gray-800">{value}</p>
                     <p className="text-xs text-gray-400 mt-1">{label}</p>
                   </div>
                 ))}

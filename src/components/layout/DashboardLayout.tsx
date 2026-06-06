@@ -15,7 +15,6 @@ import {
   Radio,
   Menu,
   X,
-  BarChart3,
   WifiOff,
 } from 'lucide-react';
 
@@ -38,7 +37,6 @@ const sidebarItems: SidebarItem[] = [
   { id: 'onboarding-flow', label: 'Onboarding Flow', icon: BookOpen,      adminOnly: true },
   { id: 'dashboard',       label: 'Dashboard',        icon: LayoutDashboard },
   { id: 'feeding-control', label: 'Feeding Control',  icon: Utensils,      adminOnly: true },
-  { id: 'analytics',       label: 'Analytics',        icon: BarChart3 },
   { id: 'cat-profile',     label: 'Cat Profile',      icon: Cat },
   { id: 'history',         label: 'Feeding History',  icon: History },
   { id: 'education',       label: 'FLUTD Education',  icon: BookOpen },
