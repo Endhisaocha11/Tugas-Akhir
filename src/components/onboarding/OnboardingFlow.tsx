@@ -413,7 +413,7 @@ export default function OnboardingFlow({
       const link = document.createElement('a');
       const url = URL.createObjectURL(blob);
       link.setAttribute('href', url);
-      link.setAttribute('download', `feeding-plan-${form.name}-${new Date().toISOString().split('T')[0]}.csv`);
+      link.setAttribute('download', `feeding-plan-${form.name}-${(() => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`; })()}.csv`);
       link.click();
       URL.revokeObjectURL(url);
       setLoading(false);
@@ -501,7 +501,7 @@ export default function OnboardingFlow({
         profileUpdatedAt:      Date.now(),
         updatedAt:             new Date().toISOString(),
         dailyLimitReachedDate: null,
-        dailyLimitResetDate:   new Date().toISOString().split('T')[0],
+        dailyLimitResetDate:   (() => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`; })(),
       });
 
       // ── 4. Tandai onboarding selesai di user profile ──────────────────────────

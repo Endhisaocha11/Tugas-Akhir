@@ -211,7 +211,8 @@ export function useCatData(): CatData {
     prevScheduleKeyRef.current      = currentScheduleKey;
     prevProfileUpdatedAtRef.current = currentProfileUpdatedAt;
     if (!isFirstLoad && (targetChanged || scheduleChanged || profileSavedExternally)) {
-      const todayStr = new Date().toISOString().split('T')[0];
+      const _d = new Date();
+      const todayStr = `${_d.getFullYear()}-${String(_d.getMonth() + 1).padStart(2, '0')}-${String(_d.getDate()).padStart(2, '0')}`;
       const updates: Record<string, string | null> = { dailyLimitReachedDate: null };
       if (targetChanged || scheduleChanged) {
         updates.dailyLimitResetDate = todayStr;

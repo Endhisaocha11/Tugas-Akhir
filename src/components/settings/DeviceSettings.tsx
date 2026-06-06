@@ -249,19 +249,19 @@ export function DeviceSettings() {
     <div className="space-y-8 pb-20 max-w-4xl">
 
       {/* ── HEADER ── */}
-      <div className="flex items-end justify-between">
+      <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
-          <h2 className="text-3xl font-black text-gray-900">Pengaturan Perangkat</h2>
+          <h2 className="text-2xl sm:text-3xl font-black text-gray-900">Pengaturan Perangkat</h2>
           <p className="text-gray-400 mt-1 text-sm">Konfigurasi hardware ESP32 dan preferensi sistem.</p>
         </div>
         {device && (
           <span className={cn(
-            'flex items-center gap-2 px-4 py-2 rounded-2xl text-sm font-black border',
+            'flex items-center gap-2 px-3 py-1.5 rounded-2xl text-xs sm:text-sm font-black border shrink-0',
             isOnline
               ? 'bg-green-50 text-green-700 border-green-100'
               : 'bg-gray-50 text-gray-500 border-gray-200'
           )}>
-            <span className={cn('w-2 h-2 rounded-full', isOnline ? 'bg-green-500 animate-pulse' : 'bg-gray-400')} />
+            <span className={cn('w-2 h-2 rounded-full shrink-0', isOnline ? 'bg-green-500 animate-pulse' : 'bg-gray-400')} />
             {isOnline ? 'Online' : 'Offline'}
           </span>
         )}
@@ -278,18 +278,18 @@ export function DeviceSettings() {
           </div>
         )}
         <div className="relative z-10">
-          <div className="flex items-center justify-between mb-5">
-            <div className="flex items-center gap-4">
+          <div className="flex flex-wrap items-start justify-between gap-3 mb-5">
+            <div className="flex items-center gap-3 min-w-0">
               <div className={cn(
-                'w-14 h-14 rounded-2xl flex items-center justify-center shrink-0',
+                'w-11 h-11 rounded-2xl flex items-center justify-center shrink-0',
                 isOnline ? 'bg-white/10' : 'bg-gray-100'
               )}>
                 {isOnline
-                  ? <Cpu className="w-7 h-7 text-amber-400" />
-                  : <WifiOff className="w-7 h-7 text-gray-400" />}
+                  ? <Cpu className="w-6 h-6 text-amber-400" />
+                  : <WifiOff className="w-6 h-6 text-gray-400" />}
               </div>
-              <div>
-                <p className={cn('font-black text-lg', isOnline ? 'text-white' : 'text-gray-900')}>
+              <div className="min-w-0">
+                <p className={cn('font-black text-sm sm:text-base break-all', isOnline ? 'text-white' : 'text-gray-900')}>
                   {device?.id ?? `${targetOwnerId}_device`}
                 </p>
                 <p className={cn('text-xs font-bold mt-0.5', isOnline ? 'text-gray-400' : 'text-gray-400')}>
@@ -297,18 +297,18 @@ export function DeviceSettings() {
                 </p>
               </div>
             </div>
-            <div className="text-right">
+            <div className="text-right shrink-0">
               <p className={cn('text-[10px] font-medium', isOnline ? 'text-gray-500' : 'text-gray-400')}>
                 Terakhir aktif
               </p>
-              <p className={cn('text-sm font-black mt-0.5 flex items-center gap-1.5 justify-end', isOnline ? 'text-gray-300' : 'text-gray-600')}>
-                <Clock className="w-3.5 h-3.5" /> {lastSeen}
+              <p className={cn('text-xs sm:text-sm font-black mt-0.5 flex items-center gap-1.5 justify-end', isOnline ? 'text-gray-300' : 'text-gray-600')}>
+                <Clock className="w-3 h-3 sm:w-3.5 sm:h-3.5" /> {lastSeen}
               </p>
             </div>
           </div>
 
           {device ? (
-            <div className="grid grid-cols-3 gap-3">
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 sm:gap-3">
               {[
                 {
                   label: 'Stok Pakan',
@@ -337,13 +337,13 @@ export function DeviceSettings() {
                   bg: isOnline ? 'bg-white/10' : 'bg-green-50',
                 },
               ].map((item) => (
-                <div key={item.label} className={cn('rounded-2xl p-4 flex items-center gap-3', item.bg)}>
-                  <item.icon className={cn('w-5 h-5 shrink-0', item.color)} />
+                <div key={item.label} className={cn('rounded-2xl p-3 sm:p-4 flex items-center gap-2.5', item.bg)}>
+                  <item.icon className={cn('w-4 h-4 sm:w-5 sm:h-5 shrink-0', item.color)} />
                   <div className="min-w-0">
-                    <p className={cn('text-[10px] font-medium truncate', isOnline ? 'text-gray-400' : 'text-gray-500')}>
+                    <p className={cn('text-[10px] font-medium', isOnline ? 'text-gray-400' : 'text-gray-500')}>
                       {item.label}
                     </p>
-                    <p className={cn('font-black text-base', item.color)}>{item.value}</p>
+                    <p className={cn('font-black text-sm sm:text-base truncate', item.color)}>{item.value}</p>
                   </div>
                 </div>
               ))}
@@ -521,13 +521,13 @@ export function DeviceSettings() {
 
       {/* ── PREFERENSI NOTIFIKASI ── */}
       <section className="space-y-4">
-        <div className="flex items-center justify-between">
+        <div className="flex flex-wrap items-center justify-between gap-3">
           <div className="flex items-center gap-3">
-            <div className="w-8 h-8 bg-blue-50 rounded-xl flex items-center justify-center border border-blue-100">
+            <div className="w-8 h-8 bg-blue-50 rounded-xl flex items-center justify-center border border-blue-100 shrink-0">
               <Bell className="w-4 h-4 text-blue-500" />
             </div>
             <div>
-              <h3 className="font-black text-xl text-gray-900">Preferensi Notifikasi</h3>
+              <h3 className="font-black text-lg sm:text-xl text-gray-900">Preferensi Notifikasi</h3>
               <p className="text-xs text-gray-400">Pilih notifikasi yang ingin ditampilkan</p>
             </div>
           </div>
@@ -554,19 +554,19 @@ export function DeviceSettings() {
 
         <div className="bg-white rounded-4xl border border-gray-100 divide-y divide-gray-50 shadow-sm overflow-hidden">
           {notifOptions.map((opt) => (
-            <div key={opt.key} className="flex items-center justify-between gap-4 px-6 py-4 hover:bg-gray-50 transition-colors">
-              <div className="flex items-center gap-4">
+            <div key={opt.key} className="flex items-center justify-between gap-3 px-4 sm:px-6 py-4 hover:bg-gray-50 transition-colors">
+              <div className="flex items-center gap-3 min-w-0 flex-1">
                 <div className={cn(
-                  'w-10 h-10 rounded-2xl flex items-center justify-center shrink-0',
+                  'w-9 h-9 sm:w-10 sm:h-10 rounded-2xl flex items-center justify-center shrink-0',
                   notifPrefs[opt.key] ? opt.bg : 'bg-gray-50'
                 )}>
-                  <opt.icon className={cn('w-5 h-5', notifPrefs[opt.key] ? opt.color : 'text-gray-300')} />
+                  <opt.icon className={cn('w-4 h-4 sm:w-5 sm:h-5', notifPrefs[opt.key] ? opt.color : 'text-gray-300')} />
                 </div>
-                <div>
+                <div className="min-w-0">
                   <p className={cn('font-bold text-sm', notifPrefs[opt.key] ? 'text-gray-900' : 'text-gray-400')}>
                     {opt.label}
                   </p>
-                  <p className="text-xs text-gray-400 mt-0.5">{opt.desc}</p>
+                  <p className="text-xs text-gray-400 mt-0.5 leading-relaxed">{opt.desc}</p>
                 </div>
               </div>
               <button
@@ -602,10 +602,10 @@ export function DeviceSettings() {
         </div>
 
         {!showReleaseConfirm ? (
-          <div className="bg-gray-50 border border-gray-200 rounded-4xl p-6 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-            <div>
+          <div className="bg-gray-50 border border-gray-200 rounded-4xl p-5 sm:p-6 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+            <div className="min-w-0">
               <p className="font-bold text-gray-800 text-sm">Perangkat aktif:</p>
-              <code className="text-base font-black text-gray-700 mt-0.5 block break-all">
+              <code className="text-sm sm:text-base font-black text-gray-700 mt-0.5 block break-all">
                 {selectedDeviceId || devices[0]?.id || `${targetOwnerId}_device`}
               </code>
               <p className="text-xs text-gray-400 mt-1">

@@ -22,6 +22,11 @@ function getBodyLabel(bc: number): string {
 const DAYS_ID = ['Min', 'Sen', 'Sel', 'Rab', 'Kam', 'Jum', 'Sab'];
 const MONTHS_ID = ['Januari','Februari','Maret','April','Mei','Juni','Juli','Agustus','September','Oktober','November','Desember'];
 
+// Tanggal lokal (YYYY-MM-DD) — .toISOString() salah di UTC+7 jam 00–07
+function localDateStr(d = new Date()) {
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+}
+
 type FeedStatus = 'overfeed'|'met'|'under'|'none'|'future'|'today-overfeed'|'today-met'|'today-under'|'today-none';
 function getFeedStatus(date: Date, logsByDay: Record<string, FeedingLog[]>, dailyTarget: number): FeedStatus {
   const now = new Date();
@@ -73,21 +78,22 @@ function FeedingCalendarAnalytics({ feedingLogs, dailyTarget }: { feedingLogs: F
   const selectedTotal  = selectedLogs.reduce((s, l) => s + (l.amountDispensed ?? 0), 0);
   const selectedStatus = selectedDay ? getFeedStatus(selectedDay, logsByDay, dailyTarget) : null;
   return (
-    <div className="bg-white rounded-3xl border border-gray-100 p-6 shadow-sm">
-      <div className="flex items-center justify-between mb-5">
-        <div>
-          <h4 className="text-base font-black text-gray-800 flex items-center gap-2">
-            <Calendar className="text-green-500 w-4 h-4" /> Kalender Pemberian Pakan
-          </h4>
-          <p className="text-xs text-gray-400 mt-0.5">🟢 Terpenuhi · 🟡 Kurang · 🔴 Overfeeding</p>
-        </div>
+    <div className="bg-white rounded-3xl border border-gray-100 p-4 sm:p-6 shadow-sm">
+      {/* ── Header: judul + navigasi bulan ── */}
+      <div className="flex items-center justify-between mb-4">
+        <h4 className="text-sm sm:text-base font-black text-gray-800 flex items-center gap-2">
+          <Calendar className="text-green-500 w-4 h-4 shrink-0" />
+          Kalender Pakan
+        </h4>
         <div className="flex items-center gap-1">
           <button type="button" title="Bulan sebelumnya"
             onClick={() => setViewDate(new Date(year, month - 1, 1))}
             className="w-7 h-7 rounded-xl bg-gray-100 hover:bg-gray-200 flex items-center justify-center transition-colors">
             <ChevronLeft className="w-4 h-4 text-gray-500" />
           </button>
-          <span className="text-xs font-bold text-gray-600 w-28 text-center">{MONTHS_ID[month]} {year}</span>
+          <span className="text-xs font-bold text-gray-600 w-24 sm:w-28 text-center">
+            {MONTHS_ID[month]} {year}
+          </span>
           <button type="button" title="Bulan berikutnya"
             onClick={() => setViewDate(new Date(year, month + 1, 1))}
             className="w-7 h-7 rounded-xl bg-gray-100 hover:bg-gray-200 flex items-center justify-center transition-colors">
@@ -95,107 +101,142 @@ function FeedingCalendarAnalytics({ feedingLogs, dailyTarget }: { feedingLogs: F
           </button>
         </div>
       </div>
-      <div className="flex gap-4">
+
+      {/* ── Body: kalender + detail panel ── */}
+      {/* Mobile: column (kalender full-width, detail di bawah) */}
+      {/* sm+: row side-by-side */}
+      <div className="flex flex-col sm:flex-row sm:gap-4">
+
+        {/* Kalender grid */}
         <div className="flex-1 min-w-0">
-          <div className="grid grid-cols-7 mb-1.5">
+          {/* Header hari — 1 huruf di mobile, 3 huruf di sm+ */}
+          <div className="grid grid-cols-7 mb-1">
             {DAYS_ID.map((d) => (
-              <div key={d} className="text-center text-[10px] font-bold text-gray-400 py-0.5">{d}</div>
+              <div key={d} className="text-center py-1">
+                <span className="sm:hidden text-[10px] font-black text-gray-400">{d[0]}</span>
+                <span className="hidden sm:block text-[10px] font-black text-gray-400">{d}</span>
+              </div>
             ))}
           </div>
-          <div className="grid grid-cols-7 gap-1">
+
+          {/* Tanggal */}
+          <div className="grid grid-cols-7 gap-0.5 sm:gap-1">
             {cells.map((date, i) => {
               if (!date) return <div key={i} />;
-              const status    = getFeedStatus(date, logsByDay, dailyTarget);
+              const status     = getFeedStatus(date, logsByDay, dailyTarget);
               const isSelected = selectedDay?.toDateString() === date.toDateString();
-              const key2      = `${date.getFullYear()}-${date.getMonth()}-${date.getDate()}`;
-              const dayTotal  = (logsByDay[key2] ?? []).reduce((s, l) => s + (l.amountDispensed ?? 0), 0);
+              const key2       = `${date.getFullYear()}-${date.getMonth()}-${date.getDate()}`;
+              const dayTotal   = (logsByDay[key2] ?? []).reduce((s, l) => s + (l.amountDispensed ?? 0), 0);
               return (
                 <button key={i} type="button"
                   title={`${date.getDate()} ${MONTHS_ID[date.getMonth()]} — ${dayTotal}g`}
                   onClick={() => status !== 'future' ? setSelectedDay(date) : undefined}
-                  className={cn('h-9 w-full rounded-xl border text-xs font-bold transition-all flex flex-col items-center justify-center gap-0.5',
-                    STATUS_STYLE[status], isSelected && 'ring-2 ring-offset-1 ring-gray-500 scale-110')}>
-                  <span>{date.getDate()}</span>
-                  {dayTotal > 0 && <span className="text-[8px] opacity-75 leading-none">{dayTotal}g</span>}
+                  className={cn(
+                    'h-8 sm:h-9 w-full rounded-lg sm:rounded-xl border text-xs font-bold transition-all flex flex-col items-center justify-center gap-0',
+                    STATUS_STYLE[status],
+                    isSelected && 'ring-2 ring-offset-1 ring-gray-500 scale-105'
+                  )}>
+                  <span className="text-[11px] sm:text-xs leading-tight">{date.getDate()}</span>
+                  {dayTotal > 0 && (
+                    <span className="hidden sm:block text-[8px] opacity-70 leading-none">{dayTotal}g</span>
+                  )}
                 </button>
               );
             })}
           </div>
-          <div className="flex flex-wrap gap-2 mt-3 pt-3 border-t border-gray-100">
-            {[{ color:'bg-green-400', label:'Terpenuhi (≥85%)' },{ color:'bg-yellow-300', label:'Kurang' },
-              { color:'bg-red-400', label:'Overfeeding' },{ color:'bg-gray-200', label:'Tidak ada' }].map(({ color, label }) => (
+
+          {/* Legenda */}
+          <div className="flex flex-wrap gap-x-3 gap-y-1 mt-3 pt-3 border-t border-gray-100">
+            {[
+              { color: 'bg-green-400',  label: 'Terpenuhi (≥85%)' },
+              { color: 'bg-yellow-300', label: 'Kurang' },
+              { color: 'bg-red-400',    label: 'Overfeeding' },
+              { color: 'bg-gray-200',   label: 'Tidak ada' },
+            ].map(({ color, label }) => (
               <div key={label} className="flex items-center gap-1">
-                <div className={cn('w-2.5 h-2.5 rounded shrink-0', color)} />
+                <div className={cn('w-2 h-2 rounded-sm shrink-0', color)} />
                 <span className="text-[10px] text-gray-400">{label}</span>
               </div>
             ))}
           </div>
         </div>
-        <div className="w-44 shrink-0">
-          <AnimatePresence mode="wait">
-            {selectedDay ? (
-              <motion.div key={selectedDay.toDateString()} initial={{ opacity:0, x:8 }} animate={{ opacity:1, x:0 }} exit={{ opacity:0, x:8 }}>
-                <div className="flex items-start justify-between mb-2">
-                  <div>
-                    <p className="text-sm font-black text-gray-700">
-                      {selectedDay.toLocaleDateString('id-ID', { day:'numeric', month:'short' })}
-                    </p>
-                    <p className="text-[10px] text-gray-400">
-                      {selectedDay.toLocaleDateString('id-ID', { weekday:'long' })}
-                    </p>
+
+        {/* Detail panel */}
+        <AnimatePresence mode="wait">
+          {selectedDay ? (
+            <motion.div
+              key={selectedDay.toDateString()}
+              initial={{ opacity: 0, y: 6 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: 6 }}
+              className="mt-3 sm:mt-0 sm:w-44 sm:shrink-0 bg-gray-50 rounded-2xl p-3 border border-gray-100"
+            >
+              <div className="flex items-start justify-between mb-2">
+                <div>
+                  <p className="text-sm font-black text-gray-700">
+                    {selectedDay.toLocaleDateString('id-ID', { day: 'numeric', month: 'short' })}
+                  </p>
+                  <p className="text-[10px] text-gray-400">
+                    {selectedDay.toLocaleDateString('id-ID', { weekday: 'long' })}
+                  </p>
+                </div>
+                <button type="button" title="Tutup" onClick={() => setSelectedDay(null)}
+                  className="w-6 h-6 rounded-lg bg-white border border-gray-200 hover:bg-gray-100 flex items-center justify-center shrink-0">
+                  <X className="w-3 h-3 text-gray-500" />
+                </button>
+              </div>
+
+              <div className={cn('px-2.5 py-1 rounded-full text-xs font-black inline-block mb-2',
+                selectedStatus?.includes('overfeed') ? 'bg-red-100 text-red-700' :
+                selectedStatus?.includes('met')      ? 'bg-green-100 text-green-700' :
+                selectedStatus?.includes('under')    ? 'bg-yellow-100 text-yellow-700' :
+                'bg-gray-200 text-gray-500')}>
+                {selectedStatus?.includes('overfeed') ? '🔴 Overfeeding' :
+                 selectedStatus?.includes('met')      ? '🟢 Terpenuhi' :
+                 selectedStatus?.includes('under')    ? '🟡 Kurang' : '— Tidak ada'}
+              </div>
+
+              <p className="text-xl font-black text-gray-800 mb-0.5">{selectedTotal.toFixed(1)}g</p>
+              {dailyTarget > 0 && (
+                <p className="text-xs text-gray-400 mb-2">
+                  dari {dailyTarget}g ({Math.round((selectedTotal / dailyTarget) * 100)}%)
+                </p>
+              )}
+
+              <div className="space-y-1 overflow-y-auto max-h-36 sm:max-h-44">
+                {selectedLogs.map((log) => (
+                  <div key={log.id} className="flex items-center justify-between bg-white rounded-xl px-2.5 py-2 border border-gray-100">
+                    <div className="flex items-center gap-1.5">
+                      <div className={cn('w-1.5 h-1.5 rounded-full shrink-0',
+                        log.notes === 'manual' ? 'bg-blue-400' : 'bg-amber-400')} />
+                      <span className="text-xs font-bold text-gray-600">
+                        {new Date(log.timestamp).toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' })}
+                      </span>
+                    </div>
+                    <div className="text-right">
+                      <span className="text-xs font-black text-amber-600">{log.amountDispensed}g</span>
+                      <span className="text-[9px] text-gray-400 ml-1">{log.notes === 'manual' ? 'M' : 'A'}</span>
+                    </div>
                   </div>
-                  <button type="button" title="Tutup" onClick={() => setSelectedDay(null)}
-                    className="w-6 h-6 rounded-lg bg-gray-100 hover:bg-gray-200 flex items-center justify-center">
-                    <X className="w-3 h-3 text-gray-500" />
-                  </button>
-                </div>
-                <div className={cn('px-2.5 py-1 rounded-full text-xs font-black inline-block mb-2',
-                  selectedStatus?.includes('overfeed') ? 'bg-red-100 text-red-700' :
-                  selectedStatus?.includes('met')      ? 'bg-green-100 text-green-700' :
-                  selectedStatus?.includes('under')    ? 'bg-yellow-100 text-yellow-700' :
-                  'bg-gray-100 text-gray-500')}>
-                  {selectedStatus?.includes('overfeed') ? '🔴 Overfeeding' :
-                   selectedStatus?.includes('met')      ? '🟢 Terpenuhi' :
-                   selectedStatus?.includes('under')    ? '🟡 Kurang' : '— Tidak ada'}
-                </div>
-                <p className="text-xl font-black text-gray-800 mb-0.5">{selectedTotal}g</p>
-                {dailyTarget > 0 && (
-                  <p className="text-xs text-gray-400 mb-2">dari {dailyTarget}g ({Math.round((selectedTotal/dailyTarget)*100)}%)</p>
+                ))}
+                {selectedLogs.length === 0 && (
+                  <div className="flex flex-col items-center py-4 text-center">
+                    <Utensils className="w-6 h-6 text-gray-200 mb-1" />
+                    <p className="text-[10px] text-gray-400">Tidak ada pemberian</p>
+                  </div>
                 )}
-                <div className="space-y-1 overflow-y-auto max-h-44">
-                  {selectedLogs.map((log) => (
-                    <div key={log.id} className="flex items-center justify-between bg-gray-50 rounded-xl px-2.5 py-2 border border-gray-100">
-                      <div className="flex items-center gap-1.5">
-                        <div className={cn('w-1.5 h-1.5 rounded-full shrink-0', log.notes==='manual' ? 'bg-blue-400' : 'bg-amber-400')} />
-                        <span className="text-xs font-bold text-gray-600">
-                          {new Date(log.timestamp).toLocaleTimeString('id-ID',{hour:'2-digit',minute:'2-digit'})}
-                        </span>
-                      </div>
-                      <div className="text-right">
-                        <span className="text-xs font-black text-amber-600">{log.amountDispensed}g</span>
-                        <span className="text-[9px] text-gray-400 ml-1">{log.notes==='manual'?'M':'A'}</span>
-                      </div>
-                    </div>
-                  ))}
-                  {selectedLogs.length === 0 && (
-                    <div className="flex flex-col items-center py-4 text-center">
-                      <Utensils className="w-6 h-6 text-gray-200 mb-1" />
-                      <p className="text-[10px] text-gray-400">Tidak ada pemberian</p>
-                    </div>
-                  )}
-                </div>
-              </motion.div>
-            ) : (
-              <motion.div key="placeholder" initial={{ opacity:0 }} animate={{ opacity:1 }}
-                className="flex flex-col items-center justify-center h-full py-8 text-center">
-                <div className="w-10 h-10 rounded-2xl bg-gray-100 flex items-center justify-center mb-2">
-                  <Calendar className="w-5 h-5 text-gray-300" />
-                </div>
-                <p className="text-xs text-gray-400">Klik tanggal<br />untuk detail</p>
-              </motion.div>
-            )}
-          </AnimatePresence>
-        </div>
+              </div>
+            </motion.div>
+          ) : (
+            <motion.div key="placeholder" initial={{ opacity: 0 }} animate={{ opacity: 1 }}
+              className="hidden sm:flex sm:w-44 sm:shrink-0 flex-col items-center justify-center py-8 text-center">
+              <div className="w-10 h-10 rounded-2xl bg-gray-100 flex items-center justify-center mb-2">
+                <Calendar className="w-5 h-5 text-gray-300" />
+              </div>
+              <p className="text-xs text-gray-400">Ketuk tanggal<br />untuk detail</p>
+            </motion.div>
+          )}
+        </AnimatePresence>
       </div>
     </div>
   );
@@ -394,13 +435,13 @@ export function Dashboard() {
   // ── Filter state ─────────────────────────────────────
   type FilterMode = 'all' | 'today' | 'date';
   const [filterMode, setFilterMode] = useState<FilterMode>('today');
-  const [selectedDate, setSelectedDate] = useState(() => new Date().toISOString().split('T')[0]);
+  const [selectedDate, setSelectedDate] = useState(() => localDateStr());
 
   // ── Weekly consumption chart mode ────────────────────
   type WeeklyMode = '7d' | 'month' | 'year';
   const [weeklyMode, setWeeklyMode] = useState<WeeklyMode>('7d');
 
-  const todayStr = new Date().toISOString().split('T')[0];
+  const todayStr = localDateStr();
   const profileUpdatedAt = cat?.profileUpdatedAt ?? 0;
 
   // Semua log milik kucing aktif — tanpa filter waktu (untuk chart mingguan)
@@ -488,9 +529,9 @@ export function Dashboard() {
       return Array.from({ length: 7 }, (_, i) => {
         const d = new Date();
         d.setDate(d.getDate() - (6 - i));
-        const dStr = d.toISOString().split('T')[0];
+        const dStr = localDateStr(d);
         const total = catLogs
-          .filter((l) => new Date(l.timestamp).toISOString().split('T')[0] === dStr)
+          .filter((l) => localDateStr(new Date(l.timestamp)) === dStr)
           .reduce((sum, l) => sum + (l.amountDispensed ?? 0), 0);
         return { time: DAYS_ID[d.getDay()], weight: Math.round(total) };
       });

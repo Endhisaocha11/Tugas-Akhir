@@ -14,6 +14,11 @@ import { useCatData } from '../../lib/useCatData';
 import { cn } from '../../lib/utils';
 import type { FeedingScheduleSlot } from '../../types';
 
+// Tanggal lokal (YYYY-MM-DD) — hindari .toISOString() yang UTC (salah di UTC+7 jam 00–07)
+function localDateStr(d = new Date()) {
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+}
+
 // ── Color Utilities ───────────────────────────────────────────────────────────
 
 function getFoodStockTheme(pct: number) {
@@ -63,7 +68,7 @@ interface UsageDayData {
 }
 
 function UsageDayRow({ dateKey, data, dailyTarget }: { dateKey: string; data: UsageDayData; dailyTarget: number }) {
-  const todayStr = new Date().toISOString().split('T')[0];
+  const todayStr = localDateStr();
   const isToday = dateKey === todayStr;
   const date = new Date(dateKey + 'T00:00:00');
   const pct = dailyTarget > 0 ? Math.min(Math.round((data.total / dailyTarget) * 100), 100) : 0;
@@ -201,7 +206,7 @@ export function FeedingControl() {
 
   // ── Derived ──────────────────────────────────────────────────────────────
   const isDeviceOnline = devices.length > 0 && devices.some((d) => d.isOnline);
-  const todayStr = new Date().toISOString().split('T')[0];
+  const todayStr = localDateStr();
   const now = new Date();
   const currentTimeStr = `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
 
