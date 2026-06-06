@@ -628,8 +628,7 @@ export function Dashboard() {
             <Info className="w-4 h-4 text-blue-400 shrink-0 mt-0.5" />
             <p className="text-sm text-blue-600">
               <span className="font-bold">Data direset.</span>{' '}
-              Profil diperbarui pada {new Date(profileUpdatedAt).toLocaleDateString('id-ID', { day: 'numeric', month: 'long' })}.
-              {' '}{hiddenLogsCount} log lama disembunyikan agar tidak tercampur data profil baru.
+              Profil diperbarui pada {new Date(profileUpdatedAt).toLocaleString('id-ID', { year: 'numeric', month: 'long', day: 'numeric', hour: '2-digit', minute: '2-digit' })}.
             </p>
           </div>
         )}
@@ -895,7 +894,6 @@ export function Dashboard() {
           <div className="flex items-center gap-2 px-4 py-2 bg-gradient-to-r from-amber-50 to-orange-50 rounded-2xl border border-amber-200 shadow-sm">
             <Activity className="w-4 h-4 text-amber-500" />
             <span className="text-sm font-black text-amber-700">Analitik Pemberian</span>
-            <span className="text-[11px] text-amber-400 font-medium">· 7 hari terakhir</span>
           </div>
           <div className="flex-1 h-px bg-gradient-to-l from-amber-300 to-transparent" />
         </div>
@@ -1063,7 +1061,6 @@ export function Dashboard() {
           <div className="flex items-center gap-2 px-4 py-2 bg-gradient-to-r from-blue-50 to-indigo-50 rounded-2xl border border-blue-200 shadow-sm">
             <Calendar className="w-4 h-4 text-blue-500" />
             <span className="text-sm font-black text-blue-700">Rekap Historis</span>
-            <span className="text-[11px] text-blue-400 font-medium">· tidak terpengaruh filter</span>
           </div>
           <div className="flex-1 h-px bg-gradient-to-l from-blue-300 to-transparent" />
         </div>

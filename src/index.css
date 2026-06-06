@@ -26,5 +26,24 @@
   .card-premium {
     @apply bg-white border border-amber-100/50 rounded-3xl p-6 shadow-sm hover:shadow-md transition-shadow;
   }
+
+  /* ── CatLoader ─────────────────────────────────────────────────────────── */
+  .cl-stage { position: relative; width: 100%; height: 100px; }
+
+  .cl-ground-line {
+    position: absolute; bottom: 0; left: 0; right: 0;
+    height: 2px; border-radius: 9999px;
+    background: linear-gradient(
+      90deg,
+      transparent 0%, #E5D4C0 15%, #E5D4C0 85%, transparent 100%
+    );
+  }
+
+  .cl-cat-shadow {
+    position: absolute; bottom: -2px;
+    width: 68px; height: 12px; border-radius: 50%;
+    background: radial-gradient(ellipse, rgba(0,0,0,0.13) 0%, transparent 70%);
+    pointer-events: none;
+  }
 }
 

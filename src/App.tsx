@@ -1,8 +1,11 @@
 import { useState } from 'react';
+import { useEffect } from 'react';
 import { AuthProvider, useAuth } from './lib/AuthContext';
 import { DeviceProvider } from './lib/DeviceContext';
 import { Cpu, Wifi, WifiOff, Database, Lock, CheckCircle2, AlertTriangle } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
+import { CatLoader } from './components/ui/CatLoader';
+import { ErrorPage } from './components/ui/ErrorPage';
 
 import { AuthScreen } from './components/auth/AuthScreen';
 import OnboardingFlow from './components/onboarding/OnboardingFlow';
@@ -242,27 +245,27 @@ function DeviceSelectionScreen() {
 function AppContent() {
   const { user, profile, loading } = useAuth();
   const [currentTab, setCurrentTab] = useState('dashboard');
+  const [loadError, setLoadError] = useState(false);
 
-  if (loading) {
-    return (
-      <div className="flex items-center justify-center min-h-screen bg-bg-warm">
-        <div className="animate-pulse flex flex-col items-center">
-          <div className="w-16 h-16 bg-primary rounded-full opacity-20 mb-4" />
-          <p className="text-text-main font-medium">Loading PawfectCare...</p>
-        </div>
-      </div>
-    );
+  // Show error page if Firebase takes too long to respond
+  useEffect(() => {
+    if (!loading) {
+      setLoadError(false);
+      return;
+    }
+    const t = setTimeout(() => setLoadError(true), 12000);
+    return () => clearTimeout(t);
+  }, [loading]);
+
+  if (loadError) {
+    return <ErrorPage onRetry={() => { setLoadError(false); window.location.reload(); }}/>;
   }
+
+  if (loading) return <CatLoader/>;
 
   if (!user) return <AuthScreen />;
 
-  if (!profile) {
-    return (
-      <div className="flex items-center justify-center min-h-screen bg-bg-warm">
-        <p className="text-gray-500">Loading Profile...</p>
-      </div>
-    );
-  }
+  if (!profile) return <CatLoader text="Memuat profil kamu..."/>;
 
   const isAdmin = profile.role === UserRole.SUPER_ADMIN;
 

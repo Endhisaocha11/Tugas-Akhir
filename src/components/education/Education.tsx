@@ -6,6 +6,9 @@ import {
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { cn } from '../../lib/utils';
+const kucingminum = '/kucingminum.png';
+const flutd = '/flutd.png';
+const kucing = '/kucing.png';
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -104,7 +107,7 @@ const ARTICLES: Article[] = [
     icon: AlertCircle,
     title: 'FLUTD: Bahaya di Balik Pakan Berlebih',
     subtitle: 'Feline Lower Urinary Tract Disease & kaitannya dengan pola makan',
-    image: 'https://images.unsplash.com/photo-1514888286974-6c03e2ca1dba?auto=format&fit=crop&q=80&w=600',
+    image: kucing,
     summary:
       'FLUTD adalah kelompok penyakit saluran kemih bawah pada kucing yang sangat umum dan berkaitan erat dengan pola makan dan hidrasi.',
     sections: [
@@ -378,7 +381,7 @@ const ARTICLES: Article[] = [
     icon: Droplets,
     title: 'Hidrasi: Pertahanan Utama Kesehatan Kucing',
     subtitle: 'Mengapa asupan air adalah kunci mencegah penyakit saluran kemih',
-    image: 'https://images.unsplash.com/photo-1573865668133-f560c55a3e9b?auto=format&fit=crop&q=80&w=600',
+    image: kucingminum,
     summary:
       'Kucing secara alami memiliki dorongan minum yang rendah karena nenek moyangnya adalah hewan gurun. Ini membuat hidrasi aktif menjadi tanggung jawab pemilik.',
     sections: [
@@ -1113,7 +1116,7 @@ export function Education() {
         <div className="absolute -bottom-16 -left-16 w-64 h-64 bg-white/10 rounded-full blur-3xl" />
         <div className="md:w-1/3 relative z-10">
           <img
-            src="https://images.unsplash.com/photo-1571566882372-1598d83abe80?auto=format&fit=crop&q=80&w=400"
+            src={flutd}
             className="w-full h-64 object-cover rounded-3xl shadow-2xl"
             alt="Pencegahan FLUTD"
           />
