@@ -45,14 +45,17 @@ export function useCatData(): CatData {
   const [allCatIds, setAllCatIds]       = useState<string[]>([]);
   const [devices, setDevices]           = useState<DeviceStatus[]>([]);
   const [rtdbDeviceData, setRtdbDeviceData] = useState<Record<string, any> | null>(null);
+  const [lastRtdbTs, setLastRtdbTs]     = useState<number>(0);   // kapan data RTDB terakhir berubah
+  const [staleCheck, setStaleCheck]     = useState<number>(0);   // ticker 30 detik untuk cek stale
   const [feedingLogs, setFeedingLogs]   = useState<FeedingLog[]>([]);
   const [profileHistory, setProfileHistory] = useState<CatProfileSnapshot[]>([]);
   const [loading, setLoading]           = useState(true);
 
-  const prevTargetRef       = useRef<number | null>(null);
-  const prevScheduleKeyRef  = useRef<string | null>(null);
+  const prevTargetRef           = useRef<number | null>(null);
+  const prevScheduleKeyRef      = useRef<string | null>(null);
+  const prevProfileUpdatedAtRef = useRef<number | null>(null);
   // Ref cat terkini agar listener RTDB tidak punya stale closure
-  const catRef              = useRef<CatProfile | null>(null);
+  const catRef                  = useRef<CatProfile | null>(null);
 
   const isAdmin = profile?.role === UserRole.SUPER_ADMIN;
   const targetOwnerId = isAdmin
@@ -125,7 +128,13 @@ export function useCatData(): CatData {
     // 2a. Telemetri live (isOnline, weight, servo, dll.)
     const deviceRtdbRef = ref(rtdb, `devices/${claimedDeviceId}`);
     const unsubTelemetry = onValue(deviceRtdbRef, (snapshot) => {
-      setRtdbDeviceData(snapshot.exists() ? snapshot.val() : null);
+      if (snapshot.exists()) {
+        setRtdbDeviceData(snapshot.val());
+        setLastRtdbTs(Date.now());   // catat kapan data terakhir diterima
+      } else {
+        setRtdbDeviceData(null);
+        setLastRtdbTs(0);
+      }
     });
 
     // 2b. Deteksi jadwal otomatis selesai dari ESP32
@@ -184,36 +193,53 @@ export function useCatData(): CatData {
     if (!belongs) setSelectedDeviceId('');
   }, [devices, selectedDeviceId, setSelectedDeviceId]);
 
-  // When dailyGramTarget or feedingSchedule changes, clear stale limit/adjustment data
+  // Ticker 30 detik — memicu re-render agar isRtdbLive dievaluasi ulang dengan Date.now() terbaru
+  useEffect(() => {
+    const id = setInterval(() => setStaleCheck(n => n + 1), 30_000);
+    return () => clearInterval(id);
+  }, []);
+
+  // Clear limit flag saat target/jadwal berubah ATAU saat profil disimpan dari luar (onboarding)
   useEffect(() => {
     if (!cat || !targetOwnerId) return;
-    const currentTarget = cat.dailyGramTarget ?? 0;
-    const currentScheduleKey = (cat.feedingSchedule ?? [])
+    const currentTarget           = cat.dailyGramTarget ?? 0;
+    const currentScheduleKey      = (cat.feedingSchedule ?? [])
       .map((s) => `${s.time}:${s.amount}`)
       .join('|');
-    const isFirstLoad    = prevTargetRef.current === null;
-    const targetChanged  = !isFirstLoad && prevTargetRef.current !== currentTarget;
-    const scheduleChanged = !isFirstLoad && prevScheduleKeyRef.current !== currentScheduleKey;
-    prevTargetRef.current      = currentTarget;
-    prevScheduleKeyRef.current = currentScheduleKey;
-    if (!isFirstLoad && (targetChanged || scheduleChanged)) {
+    const currentProfileUpdatedAt = cat.profileUpdatedAt ?? 0;
+    const isFirstLoad             = prevTargetRef.current === null;
+    const targetChanged           = !isFirstLoad && prevTargetRef.current !== currentTarget;
+    const scheduleChanged         = !isFirstLoad && prevScheduleKeyRef.current !== currentScheduleKey;
+    // Deteksi simpan profil dari OnboardingFlow/CatProfilePage (mereka tulis profileUpdatedAt)
+    const profileSavedExternally  = !isFirstLoad
+      && prevProfileUpdatedAtRef.current !== null
+      && prevProfileUpdatedAtRef.current !== currentProfileUpdatedAt;
+    prevTargetRef.current           = currentTarget;
+    prevScheduleKeyRef.current      = currentScheduleKey;
+    prevProfileUpdatedAtRef.current = currentProfileUpdatedAt;
+    if (!isFirstLoad && (targetChanged || scheduleChanged || profileSavedExternally)) {
       const todayStr = new Date().toISOString().split('T')[0];
-      updateDoc(doc(db, 'cats', cat.id), {
-        profileUpdatedAt:      Date.now(),
-        dailyLimitResetDate:   todayStr,
-        dailyLimitReachedDate: null,
-        dailyAdjustments:      null,
-      }).catch(console.error);
+      const updates: Record<string, string | null> = { dailyLimitReachedDate: null };
+      if (targetChanged || scheduleChanged) {
+        updates.dailyLimitResetDate = todayStr;
+        updates.dailyAdjustments    = null;
+      }
+      updateDoc(doc(db, 'cats', cat.id), updates).catch(console.error);
     }
   }, [cat, targetOwnerId]);
 
   // ── Gabung Firestore claim metadata + RTDB telemetri ─────────────────────
+  // Data RTDB dianggap "hidup" jika diterima dalam 90 detik terakhir
+  // staleCheck memicu evaluasi ulang setiap 30 detik agar Date.now() selalu segar
+  const STALE_MS = 90_000;
+  const isRtdbLive = staleCheck >= 0 && lastRtdbTs > 0 && (Date.now() - lastRtdbTs) < STALE_MS;
+
   const fsDevice = devices[0] ?? null;
   const device: DeviceStatus | null = fsDevice
     ? {
         ...fsDevice,
-        // Override field telemetri dengan data live dari RTDB (ESP32)
-        isOnline:             rtdbDeviceData?.isOnline            ?? fsDevice.isOnline,
+        // Online hanya jika: data RTDB ada, ESP32 set isOnline=true, DAN data belum basi (< 90 detik)
+        isOnline:             rtdbDeviceData?.isOnline === true && isRtdbLive,
         lastPulse:            parseRtdbTime(rtdbDeviceData?.time)  || fsDevice.lastPulse,
         foodStockLevel:       rtdbDeviceData?.foodStock            ?? fsDevice.foodStockLevel,
         currentWeightOnScale: rtdbDeviceData != null

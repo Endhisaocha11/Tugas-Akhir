@@ -200,6 +200,7 @@ export function FeedingControl() {
   }, [devices, selectedDeviceId]);
 
   // ── Derived ──────────────────────────────────────────────────────────────
+  const isDeviceOnline = devices.length > 0 && devices.some((d) => d.isOnline);
   const todayStr = new Date().toISOString().split('T')[0];
   const now = new Date();
   const currentTimeStr = `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
@@ -210,24 +211,27 @@ export function FeedingControl() {
   const todayStart = new Date(); todayStart.setHours(0, 0, 0, 0);
   const todayStartMs = todayStart.getTime();
 
-  // Hanya hitung log kucing aktif sejak tengah malam — tidak direset saat profil diedit
-  // (dailyLimitReachedDate tetap di-clear oleh useCatData saat target/jadwal berubah)
+  // Cutoff: pakai profileUpdatedAt jika onboarding dijalankan hari ini (reset count),
+  // kalau tidak pakai tengah malam (count sejak awal hari)
+  const profileUpdatedAt = cat?.profileUpdatedAt ?? 0;
+  const todayCountFrom = Math.max(todayStartMs, profileUpdatedAt);
+
   const todayTotal = Math.round(
     feedingLogs
-      .filter((l) => l.catId === cat?.id && l.timestamp >= todayStartMs)
+      .filter((l) => l.catId === cat?.id && l.timestamp >= todayCountFrom)
       .reduce((sum, l) => sum + (l.amountDispensed ?? 0), 0)
   );
 
   // Manual-only total today — used as basis for auto-slot adjustment
   const todayManualTotal = Math.round(
     feedingLogs
-      .filter((l) => l.catId === cat?.id && l.timestamp >= todayStartMs && l.notes === 'manual')
+      .filter((l) => l.catId === cat?.id && l.timestamp >= todayCountFrom && l.notes === 'manual')
       .reduce((sum, l) => sum + (l.amountDispensed ?? 0), 0)
   );
 
-  // Use Firestore flag as the authoritative "at limit" state — cleared on profile change
+  // Flag Firestore — di-clear oleh useCatData saat profil/target/jadwal berubah
   const isAtDailyLimit = cat?.dailyLimitReachedDate === todayStr;
-  // Separate live calc used only to trigger writing the flag to Firestore
+  // Live calc — dipakai untuk trigger write flag & sync RTDB
   const isActuallyOverLimit = dailyTarget > 0 && todayTotal >= dailyTarget;
   const wouldExceed = dailyTarget > 0 && (todayTotal + feedingAmount) > dailyTarget;
   const progressPct = dailyTarget > 0 ? Math.min(Math.round((todayTotal / dailyTarget) * 100), 100) : 0;
@@ -252,15 +256,15 @@ export function FeedingControl() {
     }));
   }, [dailyTarget, todayTotal, schedule, currentTimeStr]);
 
-  // Display adjustment — ALL active slots, based on manual-only total + pending slider
+  // Display adjustment — hanya muncul setelah ada pemberian manual hari ini (bukan preview slider)
   const liveAdjustedSlots = useMemo(() => {
-    if (!dailyTarget) return null;
+    if (!dailyTarget || todayManualTotal <= 0) return null;
     const allActiveSlots = schedule.filter((s) => s.active !== false);
     const allActiveTotal = allActiveSlots.reduce((sum, s) => sum + s.amount, 0);
     if (allActiveTotal <= 0) return null;
 
-    // Remaining for auto = daily target − manual given today − pending slider
-    const remainingForAuto = Math.max(0, dailyTarget - todayManualTotal - feedingAmount);
+    // Remaining for auto = daily target − manual yang sudah diberikan hari ini
+    const remainingForAuto = Math.max(0, dailyTarget - todayManualTotal);
     if (remainingForAuto >= allActiveTotal) return null;
 
     const factor = remainingForAuto / allActiveTotal;
@@ -269,7 +273,7 @@ export function FeedingControl() {
       originalAmount: s.amount,
       adjustedAmount: Math.max(0, Math.round(s.amount * factor)),
     }));
-  }, [dailyTarget, todayManualTotal, feedingAmount, schedule]);
+  }, [dailyTarget, todayManualTotal, schedule]);
 
   const futureScheduleTotal = syncAdjustedSlots
     ? syncAdjustedSlots.reduce((sum, s) => sum + s.adjustedAmount, 0)
@@ -279,7 +283,6 @@ export function FeedingControl() {
   const selectedDevice = devices.find((d) => d.id === selectedDeviceId) ?? devices[0] ?? null;
 
   // Usage history grouped by day — hanya log setelah profil terakhir diubah
-  const profileUpdatedAt = cat?.profileUpdatedAt ?? 0;
   const usageDays = useMemo(() => {
     const map = new Map<string, UsageDayData>();
     feedingLogs.filter((log) => log.catId === cat?.id && log.timestamp >= profileUpdatedAt).forEach((log) => {
@@ -300,15 +303,14 @@ export function FeedingControl() {
       .slice(0, 7);
   }, [feedingLogs, profileUpdatedAt]);
 
-  // ── Write daily limit flag to Firestore when limit is hit ─────────────────
-  // Guard: skip if profile was reset today (dailyLimitResetDate === today)
+  // Persist flag ke Firestore agar ESP32 tahu limit tercapai
   useEffect(() => {
-    if (!isActuallyOverLimit || !cat || isAtDailyLimit) return;
-    if (cat.dailyLimitResetDate === todayStr) return;
+    if (!isActuallyOverLimit || !cat) return;
+    if (cat.dailyLimitReachedDate === todayStr) return;
     updateDoc(doc(db, 'cats', cat.id), {
       dailyLimitReachedDate: todayStr,
     }).catch(console.error);
-  }, [isActuallyOverLimit, isAtDailyLimit, cat, todayStr]);
+  }, [isActuallyOverLimit, cat, todayStr]);
 
   // ── Sync jadwal efektif ke RTDB agar ESP32 bisa baca untuk auto-feed ────
   useEffect(() => {
@@ -476,11 +478,6 @@ export function FeedingControl() {
         status: wasConfirmed ? 'success' : 'sent',
         notes: 'manual',
       });
-
-      // 4. Tandai daily limit jika tercapai
-      if (dailyTarget > 0 && (todayTotal + feedingAmount) >= dailyTarget) {
-        await updateDoc(catDocRef(), { dailyLimitReachedDate: todayStr });
-      }
 
       setLastFedAmount(feedingAmount);
       setFeedResult(wasConfirmed ? 'success' : 'timeout');
@@ -923,6 +920,40 @@ export function FeedingControl() {
             )}
           </div>
 
+          {/* ── OFFLINE PANEL ── */}
+          {devices.length > 0 && !isDeviceOnline && (
+            <div className="relative z-10 rounded-3xl border-2 border-gray-200 bg-gray-50 overflow-hidden">
+              <div className="flex items-center gap-3 px-5 py-4 bg-gray-100 border-b border-gray-200">
+                <WifiOff className="w-5 h-5 text-gray-400 shrink-0" />
+                <p className="font-black text-gray-600 text-base">Perangkat Tidak Aktif</p>
+              </div>
+              <div className="px-5 py-4 space-y-3">
+                <p className="text-sm text-gray-500">
+                  Pemberian pakan manual maupun otomatis <strong>tidak dapat dilakukan</strong> saat perangkat offline.
+                  Feeder harus terhubung ke Wi-Fi agar bisa menerima perintah.
+                </p>
+                <div className="space-y-2 text-sm text-gray-500">
+                  <p className="font-black text-gray-600 text-xs uppercase tracking-widest">Cara Mengaktifkan Kembali</p>
+                  {[
+                    'Pastikan adaptor listrik feeder terpasang dan lampu indikator menyala.',
+                    'Cek koneksi Wi-Fi — feeder harus terhubung ke jaringan yang sama saat setup.',
+                    'Jika lampu berkedip merah, tekan tombol reset pada ESP32 lalu tunggu 30 detik.',
+                    'Buka menu Settings → lihat ID perangkat, pastikan sesuai yang terpasang di rumah.',
+                    'Jika masih offline setelah 2 menit, nyalakan ulang router Wi-Fi.',
+                  ].map((tip, i) => (
+                    <div key={i} className="flex items-start gap-2.5">
+                      <span className="w-5 h-5 shrink-0 rounded-full bg-gray-200 text-gray-500 text-[10px] font-black flex items-center justify-center mt-0.5">{i + 1}</span>
+                      <span>{tip}</span>
+                    </div>
+                  ))}
+                </div>
+                <p className="text-xs text-gray-400 bg-gray-100 rounded-xl px-3 py-2">
+                  💡 Jadwal pakan yang sudah tersimpan akan berjalan otomatis begitu feeder kembali online.
+                </p>
+              </div>
+            </div>
+          )}
+
           {/* CTA */}
           <div className="relative z-10 space-y-3">
 
@@ -1001,13 +1032,15 @@ export function FeedingControl() {
               <button
                 type="button"
                 onClick={() => {
-                  if (isAtDailyLimit || wouldExceed || feedingAmount < 5) return;
+                  if (!isDeviceOnline || isAtDailyLimit || wouldExceed || feedingAmount < 5) return;
                   setShowConfirm(true);
                 }}
-                disabled={isAtDailyLimit || wouldExceed || feedingAmount < 5}
+                disabled={!isDeviceOnline || isAtDailyLimit || wouldExceed || feedingAmount < 5}
                 className={cn(
                   'w-full py-5 rounded-3xl font-black text-lg md:text-xl flex items-center justify-center gap-3 transition-all',
-                  isAtDailyLimit
+                  !isDeviceOnline
+                    ? 'bg-gray-100 text-gray-400 cursor-not-allowed'
+                    : isAtDailyLimit
                     ? 'bg-gray-100 text-gray-400 cursor-not-allowed'
                     : wouldExceed
                     ? 'bg-red-100 text-red-400 cursor-not-allowed border-2 border-red-200'
@@ -1016,7 +1049,9 @@ export function FeedingControl() {
                     : 'bg-amber-400 hover:bg-amber-500 active:scale-95 text-white shadow-lg shadow-amber-200'
                 )}
               >
-                {isAtDailyLimit ? (
+                {!isDeviceOnline ? (
+                  <><WifiOff className="w-6 h-6 shrink-0" /> Perangkat Offline</>
+                ) : isAtDailyLimit ? (
                   <><BanIcon className="w-6 h-6 shrink-0" /> Batas harian tercapai</>
                 ) : wouldExceed ? (
                   <><AlertTriangle className="w-6 h-6 shrink-0" /> Kurangi porsi agar tidak berlebih</>
@@ -1102,14 +1137,11 @@ export function FeedingControl() {
             <div className="flex items-start gap-2.5 p-3 rounded-xl border text-xs bg-indigo-50 border-indigo-100">
               <Zap className="w-3.5 h-3.5 shrink-0 mt-0.5 text-indigo-400" />
               <div className="text-indigo-700">
-                <p className="font-black">
-                  {syncAdjustedSlots ? 'Smart Adjustment Aktif' : `Preview: jika memberi ${feedingAmount}g sekarang`}
-                </p>
+                <p className="font-black">Smart Adjustment Aktif</p>
                 <p className="mt-0.5">
-                  {syncAdjustedSlots
-                    ? `Sudah diberikan ${todayTotal}g — setelah tambah ${feedingAmount}g = ${todayTotal + feedingAmount}g dari target ${dailyTarget}g.`
-                    : `Total jadi ${todayTotal + feedingAmount}g dari target ${dailyTarget}g.`}
-                  {' '}Porsi yang ditulis <span className="line-through">dicoret</span> = porsi asli.
+                  Sudah diberikan {todayManualTotal}g manual — sisa{' '}
+                  {Math.max(0, dailyTarget - todayManualTotal)}g untuk jadwal otomatis.{' '}
+                  Porsi yang ditulis <span className="line-through">dicoret</span> = porsi asli.
                 </p>
               </div>
             </div>

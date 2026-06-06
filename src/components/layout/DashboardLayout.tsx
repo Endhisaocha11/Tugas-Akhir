@@ -16,6 +16,7 @@ import {
   Menu,
   X,
   BarChart3,
+  WifiOff,
 } from 'lucide-react';
 
 import { motion, AnimatePresence } from 'framer-motion';
@@ -60,8 +61,9 @@ export function DashboardLayout({
   userRole = UserRole.USER,
 }: DashboardLayoutProps) {
   const { user } = useAuth();
-  const { cat } = useCatData();
+  const { cat, device } = useCatData();
   const catPhotoUrl = (cat as any)?.photoUrl as string | undefined;
+  const isOnline = device?.isOnline === true;
 
   const [sidebarOpen, setSidebarOpen] = useState(false);
 
@@ -99,9 +101,9 @@ export function DashboardLayout({
           </div>
           <div>
             <p className="text-sm font-bold text-gray-800 leading-none">PawfectCare</p>
-            <p className="text-[10px] text-green-500 font-medium mt-0.5 flex items-center gap-1">
-              <span className="w-1.5 h-1.5 bg-green-400 rounded-full inline-block animate-pulse" />
-              Status: Online
+            <p className={cn('text-[10px] font-medium mt-0.5 flex items-center gap-1', isOnline ? 'text-green-500' : 'text-gray-400')}>
+              <span className={cn('w-1.5 h-1.5 rounded-full inline-block', isOnline ? 'bg-green-400 animate-pulse' : 'bg-gray-300')} />
+              {isOnline ? 'Status: Online' : 'Status: Offline'}
             </p>
           </div>
         </div>
@@ -298,6 +300,34 @@ export function DashboardLayout({
             </button>
           </div>
         </header>
+
+        {/* OFFLINE BANNER — muncul di semua halaman saat perangkat tidak terdeteksi RTDB */}
+        <AnimatePresence>
+          {device !== null && !isOnline && (
+            <motion.div
+              initial={{ opacity: 0, y: -8 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -8 }}
+              transition={{ duration: 0.2 }}
+              className="mx-4 mt-3 flex items-center gap-3 bg-red-50 border border-red-200 rounded-2xl px-4 py-3"
+            >
+              <WifiOff className="w-4 h-4 text-red-400 shrink-0" />
+              <div className="flex-1 min-w-0">
+                <p className="text-sm font-black text-red-700">Perangkat Offline</p>
+                <p className="text-xs text-red-500 truncate">Feeder tidak terhubung — pemberian pakan otomatis & manual tidak aktif.</p>
+              </div>
+              {isAdmin && (
+                <button
+                  type="button"
+                  onClick={() => handleTabChange('settings')}
+                  className="shrink-0 text-xs font-black text-red-600 bg-red-100 hover:bg-red-200 px-3 py-1.5 rounded-xl transition-colors"
+                >
+                  Cek Perangkat
+                </button>
+              )}
+            </motion.div>
+          )}
+        </AnimatePresence>
 
         {/* PAGE CONTENT */}
         <div className="flex-1 p-4 md:p-6 flex flex-col min-w-0">

@@ -498,8 +498,10 @@ export default function OnboardingFlow({
           amount: s.amount,
           label: s.label,
         })),
-        profileUpdatedAt: Date.now(),
-        updatedAt: new Date().toISOString(),
+        profileUpdatedAt:      Date.now(),
+        updatedAt:             new Date().toISOString(),
+        dailyLimitReachedDate: null,
+        dailyLimitResetDate:   new Date().toISOString().split('T')[0],
       });
 
       // ── 4. Tandai onboarding selesai di user profile ──────────────────────────
