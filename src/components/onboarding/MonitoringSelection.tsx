@@ -7,9 +7,11 @@ import {
   query,
   where,
 } from 'firebase/firestore';
-import { db } from '../../lib/firebase';
+import { db, auth } from '../../lib/firebase';
 import { useAuth } from '../../lib/AuthContext';
 import { UserRole } from '../../types';
+import { CatLoader } from '../ui/CatLoader';
+import { LogOut } from 'lucide-react';
 
 const EDU_ARTICLES = [
   {
@@ -104,31 +106,47 @@ export function MonitoringSelection() {
     window.location.href = '/';
   };
 
+  const handleLogout = async () => {
+    try {
+      localStorage.removeItem('appMode');
+      localStorage.removeItem('selectedAdminId');
+      localStorage.removeItem('selectedAdminEmail');
+      localStorage.removeItem('catProfile');
+      await auth.signOut();
+    } catch (err) {
+      console.error(err);
+    }
+  };
+
   if (loading) {
-    return (
-      <div className="min-h-screen flex items-center justify-center bg-amber-50">
-        <div className="flex flex-col items-center gap-4">
-          <div className="w-14 h-14 rounded-full border-4 border-amber-200 border-t-amber-500 animate-spin" />
-          <p className="text-gray-400 font-medium">Memuat data...</p>
-        </div>
-      </div>
-    );
+    return <CatLoader text="Memuat data..." />;
   }
 
   return (
     <div className="min-h-screen bg-linear-to-br from-amber-50 via-orange-50 to-amber-50">
 
       {/* ── TOPBAR ── */}
-      <div className="sticky top-0 z-10 bg-white/80 backdrop-blur-md border-b border-amber-100 px-6 py-4 flex items-center justify-between">
-        <div className="flex items-center gap-2">
+      <div className="sticky top-0 z-10 bg-white/80 backdrop-blur-md border-b border-amber-100 px-4 sm:px-6 py-3.5 flex items-center justify-between gap-3">
+        <div className="flex items-center gap-2 shrink-0">
           <span className="text-xl">🐾</span>
           <span className="font-black text-amber-900 tracking-tight">PawfectCare</span>
         </div>
-        <div className="flex items-center gap-2 px-3 py-1.5 bg-amber-50 border border-amber-100 rounded-full">
-          <div className="w-2 h-2 rounded-full bg-green-400" />
-          <span className="text-xs font-bold text-amber-800 truncate max-w-44">
-            {user?.email}
-          </span>
+        <div className="flex items-center gap-2 min-w-0">
+          <div className="flex items-center gap-2 px-3 py-1.5 bg-amber-50 border border-amber-100 rounded-full min-w-0">
+            <div className="w-2 h-2 rounded-full bg-green-400 shrink-0" />
+            <span className="text-xs font-bold text-amber-800 truncate max-w-30 sm:max-w-44">
+              {user?.email}
+            </span>
+          </div>
+          <button
+            type="button"
+            onClick={handleLogout}
+            title="Sign Out"
+            aria-label="Sign Out"
+            className="shrink-0 w-8 h-8 flex items-center justify-center rounded-full text-red-400 hover:bg-red-50 hover:text-red-500 transition-colors"
+          >
+            <LogOut className="w-4 h-4" />
+          </button>
         </div>
       </div>
 

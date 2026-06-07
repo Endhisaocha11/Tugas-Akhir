@@ -882,7 +882,7 @@ export function Education() {
                   <span className="font-black text-pink-700 font-mono mr-2">Fg</span>
                   <span className="text-xs font-bold text-pink-600">Faktor Jenis Kelamin (Koreksi Risiko)</span>
                 </div>
-                <span className="text-[10px] text-pink-400 font-bold">Wolfsheimer 1994 · Opsional</span>
+                <span className="text-[10px] text-pink-400 font-bold">Wolfsheimer 1994</span>
               </div>
               <div className="divide-y divide-gray-50">
                 {[
@@ -1129,10 +1129,13 @@ export function Education() {
             Mencegah FLUTD<br />Dimulai dari Data.
           </h3>
           <p className="text-white/80 text-sm leading-relaxed">
-            Studi Naarden & Corbee (2019) membuktikan kucing dengan diet terkontrol mengalami
-            rekurensi FIC hanya <strong className="text-white">29,4%</strong> vs
+            FIC (Feline Idiopathic Cystitis) merupakan peradangan pada kandung kemih yang
+            sering kambuh pada kucing. Studi Naarden & Corbee (2019) menemukan bahwa
+            kucing dengan pola makan terkontrol memiliki tingkat kekambuhan FIC hanya
+            <strong className="text-white"> 29,4%</strong>, dibandingkan
             <strong className="text-white"> 78,6%</strong> pada kelompok kontrol.
-            PawfectCare menerapkan prinsip ini — setiap gram diperhitungkan.
+            PawfectCare menerapkan prinsip ini dengan memastikan setiap gram pakan
+            diberikan secara tepat sesuai kebutuhan kucing.
           </p>
           <div className="flex flex-wrap gap-3">
             {['Porsi Terukur', 'pH Urine Stabil', 'Jadwal Konsisten', 'Monitor Real-time'].map((tag) => (
@@ -1182,12 +1185,12 @@ export function Education() {
               <div className="border-t border-gray-50">
 
                 {/* Page info bar */}
-                <div className="flex items-center justify-between px-6 pt-4 pb-2">
-                  <span className="text-xs font-bold text-gray-400">
-                    Menampilkan {(refPage - 1) * REFS_PER_PAGE + 1}–{Math.min(refPage * REFS_PER_PAGE, ALL_REFS.length)} dari {ALL_REFS.length} referensi
+                <div className="flex items-center justify-between px-3 sm:px-6 pt-4 pb-2 gap-2">
+                  <span className="text-[10px] sm:text-xs font-bold text-gray-400 min-w-0 truncate">
+                    {(refPage - 1) * REFS_PER_PAGE + 1}–{Math.min(refPage * REFS_PER_PAGE, ALL_REFS.length)} dari {ALL_REFS.length} ref
                   </span>
-                  <span className="text-xs font-black text-amber-500">
-                    Halaman {refPage} / {totalRefPages}
+                  <span className="text-[10px] sm:text-xs font-black text-amber-500 shrink-0">
+                    Hal. {refPage}/{totalRefPages}
                   </span>
                 </div>
 
@@ -1250,7 +1253,7 @@ export function Education() {
                 </AnimatePresence>
 
                 {/* Pagination controls */}
-                <div className="flex items-center justify-between px-6 pb-5 pt-2 border-t border-gray-50">
+                <div className="flex items-center justify-between px-3 sm:px-6 pb-5 pt-2 border-t border-gray-50 gap-2">
 
                   {/* Prev button */}
                   <button
@@ -1258,25 +1261,25 @@ export function Education() {
                     onClick={() => setRefPage((p) => Math.max(1, p - 1))}
                     disabled={refPage === 1}
                     className={cn(
-                      'flex items-center gap-1.5 px-4 py-2 rounded-xl text-xs font-black transition-all',
+                      'flex items-center gap-1 px-2.5 sm:px-4 py-1.5 sm:py-2 rounded-xl text-[10px] sm:text-xs font-black transition-all shrink-0',
                       refPage === 1
                         ? 'bg-gray-100 text-gray-300 cursor-not-allowed'
                         : 'bg-gray-100 text-gray-600 hover:bg-amber-50 hover:text-amber-600'
                     )}
                   >
-                    <ChevronLeft className="w-3.5 h-3.5" />
+                    <ChevronLeft className="w-3 h-3 sm:w-3.5 sm:h-3.5" />
                     Sebelumnya
                   </button>
 
                   {/* Page number buttons */}
-                  <div className="flex items-center gap-1.5">
+                  <div className="flex items-center gap-1 sm:gap-1.5">
                     {Array.from({ length: totalRefPages }, (_, i) => i + 1).map((pg) => (
                       <button
                         key={pg}
                         type="button"
                         onClick={() => setRefPage(pg)}
                         className={cn(
-                          'w-8 h-8 rounded-xl text-xs font-black transition-all',
+                          'w-7 h-7 sm:w-8 sm:h-8 rounded-xl text-[10px] sm:text-xs font-black transition-all',
                           pg === refPage
                             ? 'bg-amber-500 text-white shadow-sm'
                             : 'bg-gray-100 text-gray-500 hover:bg-amber-50 hover:text-amber-600'
@@ -1293,14 +1296,14 @@ export function Education() {
                     onClick={() => setRefPage((p) => Math.min(totalRefPages, p + 1))}
                     disabled={refPage === totalRefPages}
                     className={cn(
-                      'flex items-center gap-1.5 px-4 py-2 rounded-xl text-xs font-black transition-all',
+                      'flex items-center gap-1 px-2.5 sm:px-4 py-1.5 sm:py-2 rounded-xl text-[10px] sm:text-xs font-black transition-all shrink-0',
                       refPage === totalRefPages
                         ? 'bg-gray-100 text-gray-300 cursor-not-allowed'
                         : 'bg-gray-100 text-gray-600 hover:bg-amber-50 hover:text-amber-600'
                     )}
                   >
                     Berikutnya
-                    <ChevronRight className="w-3.5 h-3.5" />
+                    <ChevronRight className="w-3 h-3 sm:w-3.5 sm:h-3.5" />
                   </button>
                 </div>
 

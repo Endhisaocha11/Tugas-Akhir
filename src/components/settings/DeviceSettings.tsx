@@ -615,9 +615,9 @@ export function DeviceSettings() {
             <button
               type="button"
               onClick={() => setShowReleaseConfirm(true)}
-              className="shrink-0 flex items-center gap-2 px-5 py-2.5 rounded-2xl bg-red-500 hover:bg-red-600 text-white text-sm font-black transition-colors shadow-red-200 shadow-md"
+              className="w-full sm:w-auto sm:shrink-0 flex items-center justify-center gap-2 px-5 py-3 sm:py-2.5 rounded-2xl bg-red-500 hover:bg-red-600 text-white text-sm font-black transition-colors shadow-red-200 shadow-md"
             >
-              <SwitchCamera className="w-4 h-4" />
+              <SwitchCamera className="w-4 h-4 shrink-0" />
               Lepas &amp; Ganti
             </button>
           </div>

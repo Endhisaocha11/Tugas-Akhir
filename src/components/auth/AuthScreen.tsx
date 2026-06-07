@@ -11,6 +11,7 @@ export function AuthScreen() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
+  const [showRegisterHint, setShowRegisterHint] = useState(false);
   const [loading, setLoading] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
   const [showRolePopup, setShowRolePopup] = useState(false);
@@ -25,6 +26,7 @@ export function AuthScreen() {
     e.preventDefault();
     setLoading(true);
     setError('');
+    setShowRegisterHint(false);
 
     try {
       if (isLogin) {
@@ -48,18 +50,21 @@ export function AuthScreen() {
       }
     } catch (err: any) {
       console.error('Auth error code:', err.code, '| message:', err.message);
-      const msgs: Record<string, string> = {
-        'auth/user-not-found': 'Tidak ada akun dengan email tersebut',
-        'auth/wrong-password': 'Password salah',
-        'auth/invalid-credential': 'Email atau password salah',
-        'auth/email-already-in-use': 'Email sudah digunakan',
-        'auth/weak-password': 'Password minimal 6 karakter',
-        'auth/invalid-email': 'Format email tidak valid — pastikan email ditulis lengkap (contoh: nama@mail.ugm.ac.id)',
-        'auth/network-request-failed': 'Gagal terhubung ke server. Periksa koneksi internet.',
-        'auth/too-many-requests': 'Terlalu banyak percobaan. Coba lagi beberapa saat.',
-        'auth/operation-not-allowed': 'Metode login ini belum diaktifkan. Hubungi admin.',
-      };
-      setError(msgs[err.code] || `Terjadi kesalahan (${err.code ?? 'unknown'}), coba lagi`);
+      const isInvalidCred = err.code === 'auth/invalid-credential' || err.code === 'auth/user-not-found' || err.code === 'auth/wrong-password';
+      if (isLogin && isInvalidCred) {
+        setError('Email belum terdaftar atau password salah.');
+        setShowRegisterHint(true);
+      } else {
+        const msgs: Record<string, string> = {
+          'auth/email-already-in-use': 'Email sudah digunakan, silakan masuk.',
+          'auth/weak-password': 'Password minimal 6 karakter.',
+          'auth/invalid-email': 'Format email tidak valid — pastikan email ditulis lengkap (contoh: nama@mail.ugm.ac.id)',
+          'auth/network-request-failed': 'Gagal terhubung ke server. Periksa koneksi internet.',
+          'auth/too-many-requests': 'Terlalu banyak percobaan. Coba lagi beberapa saat.',
+          'auth/operation-not-allowed': 'Metode login ini belum diaktifkan. Hubungi admin.',
+        };
+        setError(msgs[err.code] || `Terjadi kesalahan (${err.code ?? 'unknown'}), coba lagi`);
+      }
     } finally {
       setLoading(false);
     }
@@ -280,8 +285,20 @@ export function AuthScreen() {
                 </div>
 
                 {error && (
-                  <div className="bg-red-50 border border-red-100 text-red-600 text-sm rounded-2xl px-4 py-3">
-                    {error}
+                  <div className="bg-red-50 border border-red-100 rounded-2xl px-4 py-3 space-y-1.5">
+                    <p className="text-red-600 text-sm">{error}</p>
+                    {showRegisterHint && (
+                      <p className="text-xs text-red-500">
+                        Belum punya akun?{' '}
+                        <button
+                          type="button"
+                          onClick={() => { setIsLogin(false); setError(''); setShowRegisterHint(false); }}
+                          className="font-black text-amber-700 underline underline-offset-2 hover:text-amber-800"
+                        >
+                          Daftar sekarang
+                        </button>
+                      </p>
+                    )}
                   </div>
                 )}
 

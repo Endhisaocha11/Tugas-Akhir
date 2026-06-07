@@ -463,7 +463,7 @@ export function CatProfilePage() {
           <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
             {metrics.map((m) => (
               <div key={m.label} className="p-4 rounded-3xl bg-amber-50/50 border border-amber-50">
-                <div className={cn('w-10 h-10 rounded-xl bg-white flex items-center justify-center mb-3 shadow-sm', m.color)}>
+                <div className={cn('w-10 h-10 rounded-xl bg-white flex items-center justify-center mb-3 shadow-sm mx-auto md:mx-0', m.color)}>
                   <m.icon className="w-5 h-5" />
                 </div>
                 <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-1">{m.label}</p>

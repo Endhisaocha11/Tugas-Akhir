@@ -228,9 +228,10 @@ export function Notifications({ onNavigate }: { onNavigate?: (tab: string) => vo
     }
   }
 
-  // ── 3. Feeding logs: hanya profil saat ini + max 24 jam ───────────────────
+  // ── 3. Feeding logs: hanya profil saat ini + hari ini (sejak tengah malam lokal) ─
+  const todayStartMs = (() => { const d = new Date(); d.setHours(0, 0, 0, 0); return d.getTime(); })();
   const recentLogs = feedingLogs.filter(
-    (log) => log.timestamp >= profileUpdatedAt && now - log.timestamp < TWENTY_FOUR_HOURS
+    (log) => log.timestamp >= profileUpdatedAt && log.timestamp >= todayStartMs
   );
 
   recentLogs.slice(0, 20).forEach((log) => {

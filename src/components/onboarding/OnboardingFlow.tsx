@@ -909,17 +909,17 @@ export default function OnboardingFlow({
                             type="button"
                             onClick={() => upd({ age: jumpTo })}
                             className={cn(
-                              "rounded-2xl p-4 text-center border-2 transition-all cursor-pointer select-none",
+                              "rounded-2xl p-3 sm:p-4 border-2 transition-all cursor-pointer select-none flex flex-col items-center justify-center gap-1 w-full",
                               isActive
                                 ? "bg-amber-700 border-amber-700 text-white shadow-md shadow-amber-200 scale-105"
                                 : "bg-white border-gray-200 text-gray-500 hover:border-amber-300 hover:text-amber-700 hover:bg-amber-50 active:scale-95"
                             )}
                           >
-                            <p className="text-xl mb-1">{emoji}</p>
-                            <p className="font-black text-base">{label}</p>
-                            <p className={cn("text-xs mt-0.5", isActive ? "text-amber-200" : "text-gray-400")}>
+                            <span className="flex items-center justify-center w-8 h-8 text-2xl">{emoji}</span>
+                            <span className="font-black text-sm sm:text-base leading-tight">{label}</span>
+                            <span className={cn("text-[10px] sm:text-xs leading-tight", isActive ? "text-amber-200" : "text-gray-400")}>
                               {sub}
-                            </p>
+                            </span>
                           </button>
                         );
                       })}
@@ -1537,31 +1537,13 @@ export default function OnboardingFlow({
 
           {/* ── FOOTER ── */}
           <div className="px-6 pb-5 pt-4 border-t border-gray-50">
-            <div className="flex sm:flex-row flex-col gap-3 items-center">
-              {step > 1 ? (
-                <button
-                  onClick={() => setStep((s) => s - 1)}
-                  className="text-xs font-bold text-gray-400 hover:text-amber-700 transition-colors flex items-center gap-1 shrink-0 px-1"
-                >
-                  ← Kembali
-                </button>
-              ) : (
-                // Tombol kembali ke MonitoringSelection saat step 1
-                <button
-                  onClick={() => {
-                    localStorage.removeItem('appMode');
-                    window.location.href = '/';
-                  }}
-                  className="text-xs font-bold text-gray-400 hover:text-amber-700 transition-colors flex items-center gap-1 shrink-0 px-1"
-                >
-                  ← Kembali ke Monitoring Selection
-                </button>
-              )}
+            <div className="flex flex-col sm:flex-row gap-3 items-stretch sm:items-center">
               <button
+                type="button"
                 onClick={handleNext}
                 disabled={!canNext || loading}
                 className={cn(
-                  "flex-1 py-3 lg:py-3.5 rounded-2xl font-black text-sm transition-all",
+                  "w-full sm:flex-1 py-4 sm:py-3 lg:py-3.5 rounded-2xl font-black text-base sm:text-sm transition-all",
                   canNext && !loading
                     ? "bg-gradient-to-r from-amber-800 to-amber-600 text-white shadow-lg shadow-amber-100 hover:brightness-95"
                     : "bg-gray-100 text-gray-300 cursor-not-allowed"
@@ -1577,6 +1559,26 @@ export default function OnboardingFlow({
                   ? "💾 Simpan ke Database"
                   : "Lanjutkan →"}
               </button>
+              {step > 1 ? (
+                <button
+                  type="button"
+                  onClick={() => setStep((s) => s - 1)}
+                  className="w-full sm:w-auto py-3.5 sm:py-0 sm:px-1 rounded-2xl sm:rounded-none border border-gray-200 sm:border-0 bg-gray-50 sm:bg-transparent text-sm sm:text-xs font-bold text-gray-500 sm:text-gray-400 hover:text-amber-700 hover:bg-gray-100 sm:hover:bg-transparent transition-colors flex items-center justify-center gap-1 shrink-0"
+                >
+                  ← Kembali
+                </button>
+              ) : (
+                <button
+                  type="button"
+                  onClick={() => {
+                    localStorage.removeItem('appMode');
+                    window.location.href = '/';
+                  }}
+                  className="w-full sm:w-auto py-3.5 sm:py-0 sm:px-1 rounded-2xl sm:rounded-none border border-gray-200 sm:border-0 bg-gray-50 sm:bg-transparent text-sm sm:text-xs font-bold text-gray-500 sm:text-gray-400 hover:text-amber-700 hover:bg-gray-100 sm:hover:bg-transparent transition-colors flex items-center justify-center gap-1 shrink-0"
+                >
+                  ← Kembali
+                </button>
+              )}
             </div>
 
             <div className="flex items-center justify-center gap-5 mt-3 pt-3 border-t border-amber-50">

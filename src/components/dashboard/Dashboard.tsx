@@ -481,7 +481,7 @@ export function Dashboard() {
     const now = new Date();
     if (weeklyMode === '7d') {
       const map: Record<string, number> = {};
-      allCatLogs.forEach((log) => {
+      catLogs.forEach((log) => {
         const daysAgo = Math.floor((Date.now() - log.timestamp) / 86400000);
         if (daysAgo < 7) {
           const lbl = DAYS_ID[new Date(log.timestamp).getDay()];
@@ -504,7 +504,7 @@ export function Dashboard() {
       return weeks.map(({ label, start, end }) => {
         const startMs = new Date(yr, mo, start, 0, 0, 0).getTime();
         const endMs   = new Date(yr, mo, end, 23, 59, 59, 999).getTime();
-        const amount  = allCatLogs
+        const amount  = catLogs
           .filter((l) => l.timestamp >= startMs && l.timestamp <= endMs)
           .reduce((sum, l) => sum + (l.amountDispensed ?? 0), 0);
         return { label, amount: Math.round(amount) };
@@ -515,12 +515,12 @@ export function Dashboard() {
     return MONTHS_SHORT.map((label, m) => {
       const startMs = new Date(yr, m, 1, 0, 0, 0).getTime();
       const endMs   = new Date(yr, m + 1, 0, 23, 59, 59, 999).getTime();
-      const amount  = allCatLogs
+      const amount  = catLogs
         .filter((l) => l.timestamp >= startMs && l.timestamp <= endMs)
         .reduce((sum, l) => sum + (l.amountDispensed ?? 0), 0);
       return { label, amount: Math.round(amount) };
     });
-  }, [allCatLogs, weeklyMode]);
+  }, [catLogs, weeklyMode]);
 
   // ── Area chart data (ikut filter) ────────────────────────────────────────────
   const bucketLabels = ['00:00', '04:00', '08:00', '12:00', '16:00', '20:00'];
@@ -546,7 +546,7 @@ export function Dashboard() {
   }, [filterMode, activeLogs, catLogs]);
 
   // ── Analytics data (7 days rolling, uses catLogs — not affected by date filter) ─
-  const ANALYTICS_COLORS = ['#F59E0B', '#374151'];
+  const ANALYTICS_COLORS = ['#F59E0B', '#1E3A5F'];
 
   const analyticsLineData = useMemo(() => {
     const now = Date.now();
@@ -573,7 +573,7 @@ export function Dashboard() {
 
   const analyticsBarData = useMemo(() => {
     const pm = { Pagi: 0, Siang: 0, Sore: 0, Malam: 0 };
-    catLogs.forEach((log) => {
+    activeLogs.forEach((log) => {
       const h = new Date(log.timestamp).getHours();
       if (h < 11)       pm.Pagi   += log.amountDispensed ?? 0;
       else if (h < 15)  pm.Siang  += log.amountDispensed ?? 0;
@@ -581,14 +581,17 @@ export function Dashboard() {
       else              pm.Malam  += log.amountDispensed ?? 0;
     });
     return Object.entries(pm).map(([period, grams]) => ({ period, grams: Math.round(grams) }));
-  }, [catLogs]);
+  }, [activeLogs]);
 
-  const analyticsManualCount = catLogs.filter((l) => l.notes === 'manual').length;
-  const analyticsScheduledCount = catLogs.length - analyticsManualCount;
+  const analyticsManualCount = activeLogs.filter((l) => l.notes === 'manual').length;
+  const analyticsScheduledCount = activeLogs.length - analyticsManualCount;
   const analyticsPieData = [
-    { name: 'Terjadwal', value: catLogs.length > 0 ? Math.round((analyticsScheduledCount / catLogs.length) * 100) : 0 },
-    { name: 'Manual',    value: catLogs.length > 0 ? Math.round((analyticsManualCount   / catLogs.length) * 100) : 0 },
+    { name: 'Terjadwal', value: activeLogs.length > 0 ? Math.round((analyticsScheduledCount / activeLogs.length) * 100) : 0 },
+    { name: 'Manual',    value: activeLogs.length > 0 ? Math.round((analyticsManualCount   / activeLogs.length) * 100) : 0 },
   ];
+  const hasAnalyticsData  = activeLogs.length > 0;
+  const pieDisplayData    = hasAnalyticsData ? analyticsPieData : [{ name: 'empty', value: 1 }];
+  const pieDisplayColors  = hasAnalyticsData ? ANALYTICS_COLORS : ['#E5E7EB'];
 
   // ── Alerts ────────────────────────────────────────────
   const isOverfed = dailyTarget > 0 && selectedTotal >= dailyTarget;
@@ -815,9 +818,9 @@ export function Dashboard() {
             <p className="text-[11px] text-gray-400 font-medium">Berat Mangkuk</p>
             <p className="text-3xl font-black text-gray-900 mt-0.5">{device?.currentWeightOnScale ?? 0}g</p>
           </div>
-          {allCatLogs.length > 0 && (
+          {catLogs.length > 0 && (
             <p className="text-xs text-gray-400">
-              Pemberian terakhir: <span className="font-bold text-gray-600">{allCatLogs[0].amountDispensed}g</span>
+              Pemberian terakhir: <span className="font-bold text-gray-600">{catLogs[0].amountDispensed}g</span>
             </p>
           )}
         </div>
@@ -1048,16 +1051,16 @@ export function Dashboard() {
                 <PieIcon className="text-rose-400 w-4 h-4" /> Terjadwal vs Manual
               </h4>
               <span className="text-[11px] font-bold text-gray-400 bg-gray-50 px-3 py-1.5 rounded-xl border border-gray-100">
-                {catLogs.length} event
+                {activeLogs.length} event
               </span>
             </div>
             <div className="flex-1 flex gap-4 items-center">
               <div className="w-1/2 min-h-40">
                 <ResponsiveContainer width="100%" height={160}>
                   <PieChart>
-                    <Pie data={analyticsPieData} innerRadius={48} outerRadius={70} paddingAngle={5} dataKey="value" startAngle={90} endAngle={-270}>
-                      {analyticsPieData.map((_, index) => (
-                        <Cell key={`cell-${index}`} fill={ANALYTICS_COLORS[index % ANALYTICS_COLORS.length]} stroke="none" />
+                    <Pie data={pieDisplayData} innerRadius={48} outerRadius={70} paddingAngle={hasAnalyticsData ? 5 : 0} dataKey="value" startAngle={90} endAngle={-270}>
+                      {pieDisplayData.map((_, index) => (
+                        <Cell key={`cell-${index}`} fill={pieDisplayColors[index % pieDisplayColors.length]} stroke="none" />
                       ))}
                     </Pie>
                     <Tooltip formatter={(v) => [`${v}%`, '']}
@@ -1066,22 +1069,32 @@ export function Dashboard() {
                 </ResponsiveContainer>
               </div>
               <div className="flex-1 space-y-4">
-                {analyticsPieData.map((item, idx) => (
-                  <div key={item.name}>
-                    <div className="flex items-center justify-between mb-1">
-                      <div className="flex items-center gap-2">
-                        <div className={cn('w-2.5 h-2.5 rounded-full shrink-0', idx === 0 ? 'bg-amber-400' : 'bg-gray-800')} />
-                        <span className="text-sm font-bold text-gray-600">{item.name}</span>
+                {analyticsPieData.map((item, idx) => {
+                  const dotClass = hasAnalyticsData
+                    ? (idx === 0 ? 'bg-amber-400' : 'bg-navy')
+                    : 'bg-gray-300';
+                  const barClass = hasAnalyticsData
+                    ? (idx === 0 ? 'bg-amber-400' : 'bg-navy')
+                    : 'bg-gray-200';
+                  return (
+                    <div key={item.name}>
+                      <div className="flex items-center justify-between mb-1">
+                        <div className="flex items-center gap-2">
+                          <div className={cn('w-2.5 h-2.5 rounded-full shrink-0 transition-colors duration-300', dotClass)} />
+                          <span className="text-sm font-bold text-gray-600">{item.name}</span>
+                        </div>
+                        <span className="text-xl font-black text-gray-900">{item.value}%</span>
                       </div>
-                      <span className="text-xl font-black text-gray-900">{item.value}%</span>
+                      <div className="h-1.5 bg-gray-100 rounded-full overflow-hidden">
+                        <div
+                          className={cn('h-full rounded-full transition-all duration-300', barClass)}
+                          style={{ width: `${item.value}%` }}
+                        />
+                      </div>
                     </div>
-                    <div className="h-1.5 bg-gray-100 rounded-full overflow-hidden">
-                      <div className={cn('h-full rounded-full', idx === 0 ? 'bg-amber-400' : 'bg-gray-700')}
-                        style={{ width: `${item.value}%` }} />
-                    </div>
-                  </div>
-                ))}
-                {catLogs.length > 0 && analyticsScheduledCount > analyticsManualCount && (
+                  );
+                })}
+                {activeLogs.length > 0 && analyticsScheduledCount > analyticsManualCount && (
                   <div className="mt-2 p-3 bg-green-50 rounded-2xl border border-green-100">
                     <p className="text-xs font-bold text-green-600 flex items-center gap-1.5">
                       <TrendingUp className="w-3.5 h-3.5" /> Jadwal berjalan baik

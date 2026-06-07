@@ -16,6 +16,7 @@ import {
   Menu,
   X,
   WifiOff,
+  ArrowLeft,
 } from 'lucide-react';
 
 import { motion, AnimatePresence } from 'framer-motion';
@@ -66,6 +67,7 @@ export function DashboardLayout({
   const [sidebarOpen, setSidebarOpen] = useState(false);
 
   const isAdmin = userRole === UserRole.SUPER_ADMIN;
+  const selectedAdminEmail = localStorage.getItem('selectedAdminEmail') ?? '';
 
   const filteredItems = sidebarItems.filter((item) => {
     if (item.adminOnly && !isAdmin) return false;
@@ -89,20 +91,40 @@ export function DashboardLayout({
     }
   };
 
+  const handleBackToMonitoring = () => {
+    localStorage.removeItem('appMode');
+    localStorage.removeItem('selectedAdminId');
+    localStorage.removeItem('selectedAdminEmail');
+    window.location.href = '/';
+  };
+
   const SidebarContent = () => (
     <>
       {/* BRAND */}
       <div className="px-5 py-4 border-b border-gray-50 flex items-center justify-between shrink-0">
-        <div className="flex items-center gap-2.5">
+        <div className="flex items-center gap-2.5 min-w-0">
           <div className="w-9 h-9 rounded-xl overflow-hidden border-2 border-amber-200 shrink-0">
             <img src="logo.png" alt="feeder" className="w-full h-full object-cover" />
           </div>
-          <div>
+          <div className="min-w-0">
             <p className="text-sm font-bold text-gray-800 leading-none">PawfectCare</p>
             <p className={cn('text-[10px] font-medium mt-0.5 flex items-center gap-1', isOnline ? 'text-green-500' : 'text-gray-400')}>
-              <span className={cn('w-1.5 h-1.5 rounded-full inline-block', isOnline ? 'bg-green-400 animate-pulse' : 'bg-gray-300')} />
+              <span className={cn('w-1.5 h-1.5 rounded-full inline-block shrink-0', isOnline ? 'bg-green-400 animate-pulse' : 'bg-gray-300')} />
               {isOnline ? 'Status: Online' : 'Status: Offline'}
             </p>
+            {isAdmin ? (
+              user && (
+                <p className="text-[10px] text-gray-400 mt-0.5 truncate" title={user.email ?? ''}>
+                  {user.displayName || user.email?.split('@')[0]}
+                </p>
+              )
+            ) : (
+              selectedAdminEmail && (
+                <p className="text-[10px] text-gray-400 mt-0.5 truncate" title={selectedAdminEmail}>
+                  {selectedAdminEmail.split('@')[0]}
+                </p>
+              )
+            )}
           </div>
         </div>
         {/* Close button — mobile only */}
@@ -152,7 +174,17 @@ export function DashboardLayout({
       </nav>
 
       {/* LOGOUT */}
-      <div className="px-3 py-3 border-t border-gray-50 shrink-0">
+      <div className="px-3 py-3 border-t border-gray-50 shrink-0 space-y-1">
+        {!isAdmin && (
+          <button
+            type="button"
+            onClick={handleBackToMonitoring}
+            className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-amber-600 hover:bg-amber-50 hover:text-amber-700 transition-all text-sm font-medium"
+          >
+            <ArrowLeft className="w-4 h-4 shrink-0" />
+            Ganti Admin
+          </button>
+        )}
         <button
           type="button"
           onClick={handleLogout}
@@ -284,17 +316,19 @@ export function DashboardLayout({
               aria-label="Profil Kucing"
               onClick={() => handleTabChange('cat-profile')}
               className={cn(
-                'w-8 h-8 rounded-full overflow-hidden border-2 transition-all shrink-0',
+                'w-9 h-9 rounded-full border-2 transition-all shrink-0 flex items-center justify-center p-0',
                 activeTab === 'cat-profile'
-                  ? 'border-amber-400 ring-2 ring-amber-200'
+                  ? 'border-amber-400 ring-2 ring-amber-200 ring-offset-1'
                   : 'border-gray-200 hover:border-amber-300'
               )}
             >
-              <img
-                src={catPhotoUrl || `https://api.dicebear.com/7.x/bottts/svg?seed=${cat?.name ?? user?.uid}`}
-                alt="avatar"
-                className="w-full h-full object-cover"
-              />
+              <span className="w-full h-full rounded-full overflow-hidden block">
+                <img
+                  src={catPhotoUrl || `https://api.dicebear.com/7.x/bottts/svg?seed=${cat?.name ?? user?.uid}`}
+                  alt="avatar"
+                  className="w-full h-full object-cover"
+                />
+              </span>
             </button>
           </div>
         </header>
