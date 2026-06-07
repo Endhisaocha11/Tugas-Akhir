@@ -825,7 +825,7 @@ export function Dashboard() {
           )}
         </div>
 
-        {/* Status Dispenser */}
+        {/* Status Servo */}
         <div className="bg-white rounded-3xl border border-gray-100 p-5 shadow-sm flex flex-col gap-3">
           <div className="flex items-center justify-between">
             <div className="w-9 h-9 rounded-xl bg-orange-50 flex items-center justify-center">
@@ -847,7 +847,7 @@ export function Dashboard() {
             ) : <span className="text-[11px] font-bold px-2.5 py-1 rounded-full bg-gray-100 text-gray-400">Tidak ada</span>}
           </div>
           <div>
-            <p className="text-[11px] text-gray-400 font-medium">Status Dispenser</p>
+            <p className="text-[11px] text-gray-400 font-medium">Status Servo</p>
             <p className="text-3xl font-black text-gray-900 mt-0.5">
               {device?.servoStatus === 'active' ? 'Jalan'
                : device?.servoStatus === 'jammed' ? 'Macet'
