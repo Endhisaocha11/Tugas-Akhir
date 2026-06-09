@@ -1,5 +1,5 @@
-import { useState, useMemo } from 'react';
-import { Layers, AlertCircle, Weight, Wifi, WifiOff, Settings2, X, Copy, Check, Link2, Clock, Info, TrendingUp, Activity, BarChart3, PieChart as PieIcon, Calendar, ChevronLeft, ChevronRight, Utensils } from 'lucide-react';
+import { useState, useMemo, useEffect } from 'react';
+import { Layers, AlertCircle, Weight, Wifi, WifiOff, Settings2, X, Copy, Check, Link2, Clock, Info, TrendingUp, Activity, BarChart3, PieChart as PieIcon, Calendar, ChevronLeft, ChevronRight, Utensils, CalendarClock } from 'lucide-react';
 import {
   AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip,
   ResponsiveContainer, BarChart, Bar, PieChart, Pie, Cell, ReferenceLine,
@@ -9,7 +9,7 @@ import { useCatData } from '../../lib/useCatData';
 import { useAuth } from '../../lib/AuthContext';
 import { cn } from '../../lib/utils';
 import { UserRole } from '../../types';
-import type { FeedingLog } from '../../types';
+import type { FeedingLog, FeedingScheduleSlot } from '../../types';
 
 function getBodyLabel(bc: number): string {
   if (bc <= 2) return 'Sangat Kurus';
@@ -444,17 +444,18 @@ export function Dashboard() {
   const todayStr = localDateStr();
   const profileUpdatedAt = cat?.profileUpdatedAt ?? 0;
 
-  // Semua log milik kucing aktif — tanpa filter waktu (untuk chart mingguan)
+  // Sama persis dengan FeedingHistory: filter profileUpdatedAt tanpa catId filter
+  // (feedingLogs dari useCatData sudah hanya milik owner ini)
+  const catLogs = useMemo(
+    () => feedingLogs.filter((l) => l.timestamp >= profileUpdatedAt),
+    [feedingLogs, profileUpdatedAt]
+  );
+  // Untuk banner "data direset" — hanya log catId ini yang lebih lama dari profileUpdatedAt
   const allCatLogs = useMemo(
     () => feedingLogs.filter((l) => l.catId === cat?.id),
     [feedingLogs, cat?.id]
   );
-  // Log sejak profil terakhir diperbarui — untuk filter harian & progress
-  const catLogs = useMemo(
-    () => allCatLogs.filter((l) => l.timestamp >= profileUpdatedAt),
-    [allCatLogs, profileUpdatedAt]
-  );
-  const hiddenLogsCount = allCatLogs.length - catLogs.length;
+  const hiddenLogsCount = allCatLogs.filter((l) => l.timestamp < profileUpdatedAt).length;
 
   // Log aktif berdasarkan filter yang dipilih
   const activeLogs = useMemo(() => {
@@ -469,9 +470,68 @@ export function Dashboard() {
     activeLogs.reduce((sum, l) => sum + (l.amountDispensed ?? 0), 0)
   );
 
+  // ── Virtual consumption for today (past-time scheduled slots with no actual log) ─
+  const [minuteTick, setMinuteTick] = useState(0);
+  useEffect(() => {
+    const now = new Date();
+    const msToNextMinute = (60 - now.getSeconds()) * 1000 - now.getMilliseconds();
+    const timeout = setTimeout(() => {
+      setMinuteTick((t) => t + 1);
+      const interval = setInterval(() => setMinuteTick((t) => t + 1), 60_000);
+      return () => clearInterval(interval);
+    }, msToNextMinute);
+    return () => clearTimeout(timeout);
+  }, [minuteTick]);
+
+  const currentTimeStr = useMemo(() => {
+    void minuteTick;
+    const now = new Date();
+    return `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
+  }, [minuteTick]);
+
+  const todayStartMs = useMemo(() => {
+    const d = new Date();
+    d.setHours(0, 0, 0, 0);
+    return d.getTime();
+  }, []);
+  const todayCountFrom = Math.max(todayStartMs, profileUpdatedAt);
+
+  const schedule = useMemo(
+    () => (cat?.feedingSchedule ?? []) as FeedingScheduleSlot[],
+    [cat?.feedingSchedule]
+  );
+  const smartFeedEnabled = cat?.smartFeedEnabled !== false;
+
+  const deliveredTodaySlotTimes = useMemo(() => {
+    const s = new Set<string>();
+    if (!cat?.id) return s;
+    feedingLogs
+      .filter((l) => l.notes === 'scheduled' && l.catId === cat.id && l.timestamp >= todayCountFrom)
+      .forEach((l) => {
+        const d = new Date(l.timestamp);
+        const logMin = d.getHours() * 60 + d.getMinutes();
+        schedule.forEach((sl) => {
+          const [h, m] = sl.time.split(':').map(Number);
+          if (Math.abs(logMin - (h * 60 + m)) <= 15) s.add(sl.time);
+        });
+      });
+    return s;
+  }, [feedingLogs, schedule, todayCountFrom, cat?.id]);
+
+  // Virtual grams: past-time active slots without actual logs (only relevant for today view)
+  const todayVirtualGrams = useMemo(() => {
+    if (!smartFeedEnabled || filterMode !== 'today') return 0;
+    return schedule
+      .filter((s) => s.active !== false && s.time <= currentTimeStr && !deliveredTodaySlotTimes.has(s.time))
+      .reduce((sum, s) => sum + s.amount, 0);
+  }, [schedule, currentTimeStr, smartFeedEnabled, deliveredTodaySlotTimes, filterMode]);
+
+  // Total counted toward daily target (actual + virtual for today, actual only for other modes)
+  const countedTotal = selectedTotal + todayVirtualGrams;
+
   const dailyTarget = cat?.dailyGramTarget ?? 0;
   const progressPct =
-    dailyTarget > 0 ? Math.min(Math.round((selectedTotal / dailyTarget) * 100), 100) : 0;
+    dailyTarget > 0 ? Math.min(Math.round((countedTotal / dailyTarget) * 100), 100) : 0;
   const foodStock = device?.foodStockLevel ?? 0;
 
 
@@ -594,7 +654,7 @@ export function Dashboard() {
   const pieDisplayColors  = hasAnalyticsData ? ANALYTICS_COLORS : ['#E5E7EB'];
 
   // ── Alerts ────────────────────────────────────────────
-  const isOverfed = dailyTarget > 0 && selectedTotal >= dailyTarget;
+  const isOverfed = dailyTarget > 0 && countedTotal >= dailyTarget;
   // Notif muncul saat device ada + stok < 20% (termasuk 0%)
   // Hilang hanya saat stok sudah ≥ 20% lagi
   const isLowStock = device !== null && foodStock < 20;
@@ -602,7 +662,7 @@ export function Dashboard() {
   if (loading) {
     return (
       <div className="flex items-center justify-center h-64">
-        <div className="w-10 h-10 rounded-full border-4 border-amber-200 border-t-amber-500 animate-spin" />
+        <img src="/load.gif" alt="loading" className="h-24 w-auto object-contain" />
       </div>
     );
   }
@@ -743,10 +803,16 @@ export function Dashboard() {
           <p className="text-xs font-black uppercase tracking-widest text-gray-400">Progress Pemberian</p>
           <p className="text-sm text-gray-400 mt-1">{filterLabel}</p>
           <div className="flex-1 flex flex-col items-center justify-center my-6">
-            <p className="text-6xl font-black text-gray-900 leading-none">{selectedTotal}g</p>
+            <p className="text-6xl font-black text-gray-900 leading-none">{countedTotal}g</p>
             <p className="text-base text-gray-400 mt-2 font-medium">
               dari {dailyTarget > 0 ? `${dailyTarget}g` : '—'}
             </p>
+            {todayVirtualGrams > 0 && (
+              <div className="mt-3 flex items-center gap-1.5 text-[11px] text-gray-400 bg-gray-50 px-3 py-1.5 rounded-full border border-gray-100">
+                <CalendarClock className="w-3 h-3 shrink-0" />
+                <span>Aktual feeder: <span className="font-bold text-gray-600">{selectedTotal}g</span> + estimasi <span className="font-bold text-gray-600">{todayVirtualGrams}g</span></span>
+              </div>
+            )}
           </div>
           <div>
             <div className="w-full h-4 bg-gray-100 rounded-full overflow-hidden">

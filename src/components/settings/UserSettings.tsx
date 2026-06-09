@@ -114,7 +114,7 @@ export function UserSettings() {
   // ── Guards ────────────────────────────────────────────────────────────────────
   if (!user || !profile) return (
     <div className="flex items-center justify-center p-12">
-      <div className="w-8 h-8 rounded-full border-4 border-amber-200 border-t-amber-500 animate-spin" />
+      <img src="/load.gif" alt="loading" className="h-20 w-auto object-contain" />
     </div>
   );
 

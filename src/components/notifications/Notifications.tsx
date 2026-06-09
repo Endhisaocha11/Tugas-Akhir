@@ -115,7 +115,7 @@ export function Notifications({ onNavigate }: { onNavigate?: (tab: string) => vo
   if (loading) {
     return (
       <div className="flex items-center justify-center h-64">
-        <div className="w-10 h-10 rounded-full border-4 border-amber-200 border-t-amber-500 animate-spin" />
+        <img src="/load.gif" alt="loading" className="h-24 w-auto object-contain" />
       </div>
     );
   }

@@ -124,41 +124,57 @@ export function useCatData(): CatData {
   useEffect(() => {
     if (!claimedDeviceId || !rtdb) return;
 
-    // 2a. Telemetri live (isOnline, weight, servo, dll.)
+    // Telemetri live (isOnline, weight, servo, dll.)
     const deviceRtdbRef = ref(rtdb, `devices/${claimedDeviceId}`);
     const unsubTelemetry = onValue(deviceRtdbRef, (snapshot) => {
       setRtdbDeviceData(snapshot.exists() ? snapshot.val() : null);
     });
 
-    // 2b. Deteksi jadwal otomatis selesai dari ESP32
-    // ESP32 menulis scheduledFeedLog {amount, slot, ts, processed:false}
-    // Web app baca → buat Firestore feedingLog → set processed:true (cegah dobel)
+    return () => unsubTelemetry();
+  }, [claimedDeviceId]);
+
+  // ── Effect 2b: Deteksi jadwal otomatis — tunggu cat tersedia dulu ──────────
+  // Dua fix sekaligus:
+  // 1. cat?.id di deps → effect hanya jalan setelah device + cat keduanya siap.
+  // 2. isProcessingRef → cegah double-log saat React StrictMode mount effect 2x
+  //    (kedua onValue bisa sama-sama lihat processed:false sebelum await selesai).
+  // 3. Gunakan Date.now() bukan data.ts — ESP32 kirim ts sebagai jam lokal WIB
+  //    tapi diperlakukan sebagai UTC sehingga timestamp bergeser +7 jam.
+  const isProcessingRef = useRef(false);
+  useEffect(() => {
+    if (!claimedDeviceId || !rtdb || !cat?.id) return;
+    const catId = cat.id;
+
     const schedLogRef = ref(rtdb, `devices/${claimedDeviceId}/scheduledFeedLog`);
     const unsubSchedLog = onValue(schedLogRef, async (snap) => {
       if (!snap.exists()) return;
-      const data = snap.val() as { amount: number; slot: string; ts: number; processed: boolean };
-      if (data.processed !== false || !data.amount || !catRef.current?.id) return;
+      const data = snap.val() as { amount: number; slot: string; ts: number; processed?: boolean };
+      if (data.processed === true || !data.amount) return;
+      if (isProcessingRef.current) return; // cegah race condition StrictMode
+      isProcessingRef.current = true;
 
-      // Tandai processed=true duluan — cegah double-log
-      await set(ref(rtdb, `devices/${claimedDeviceId}/scheduledFeedLog/processed`), true);
-
-      // Buat Firestore feedingLog dengan notes:'scheduled'
-      await addDoc(collection(db, 'feedingLogs'), {
-        catId:           catRef.current.id,
-        deviceId:        claimedDeviceId,
-        timestamp:       data.ts ?? Date.now(),
-        amountRequested: data.amount,
-        amountDispensed: data.amount,
-        status:          'success',
-        notes:           'scheduled',
-      });
+      try {
+        // Tandai processed dulu agar listener kedua (StrictMode) tidak ikut proses
+        await set(ref(rtdb, `devices/${claimedDeviceId}/scheduledFeedLog/processed`), true);
+        await addDoc(collection(db, 'feedingLogs'), {
+          catId,
+          deviceId:        claimedDeviceId,
+          timestamp:       Date.now(),
+          amountRequested: data.amount,
+          amountDispensed: data.amount,
+          status:          'success',
+          notes:           'scheduled',
+        });
+        // Hapus node setelah log dibuat agar ESP32 bisa menulis slot berikutnya secara fresh
+        // (tanpa ini, ESP32 yang overwrite node yang sama akan terblokir oleh processed:true)
+        await set(ref(rtdb, `devices/${claimedDeviceId}/scheduledFeedLog`), null);
+      } finally {
+        isProcessingRef.current = false;
+      }
     });
 
-    return () => {
-      unsubTelemetry();
-      unsubSchedLog();
-    };
-  }, [claimedDeviceId]);
+    return () => { unsubSchedLog(); isProcessingRef.current = false; };
+  }, [claimedDeviceId, cat?.id]);
 
   // ── Effect 3: feeding logs — semua catId milik owner ini ────────────────
   const allCatIdsKey = allCatIds.slice(0, 10).join(',');
@@ -254,6 +270,8 @@ export function useCatData(): CatData {
           ? Math.round(rtdbDeviceData.weight ?? 0)
           : fsDevice.currentWeightOnScale,
         servoStatus:          rtdbDeviceData?.servoStatus          ?? fsDevice.servoStatus,
+        // RTDB adalah sumber utama kalibrasi (ESP32 baca/tulis ke sana); Firestore sebagai backup
+        calibrationFactor:    rtdbDeviceData?.calibration?.loadCellFactor || fsDevice.calibrationFactor || 404,
       }
     : null;
 

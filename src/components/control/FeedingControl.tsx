@@ -142,6 +142,19 @@ export function FeedingControl() {
   // Selected device for manual feed
   const [selectedDeviceId, setSelectedDeviceId] = useState<string>('');
 
+  // Ticker per menit agar currentTimeStr & slot grey-out update tepat di pergantian menit
+  const [minuteTick, setMinuteTick] = useState(0);
+  useEffect(() => {
+    const now = new Date();
+    const msToNextMinute = (60 - now.getSeconds()) * 1000 - now.getMilliseconds();
+    const timeout = setTimeout(() => {
+      setMinuteTick((t) => t + 1);
+      const interval = setInterval(() => setMinuteTick((t) => t + 1), 60_000);
+      return () => clearInterval(interval);
+    }, msToNextMinute);
+    return () => clearTimeout(timeout);
+  }, [minuteTick]);
+
   // Schedule
   const [schedule, setSchedule] = useState<FeedingScheduleSlot[]>([]);
   const [smartFeedEnabled, setSmartFeedEnabled] = useState(true);
@@ -221,18 +234,40 @@ export function FeedingControl() {
   const profileUpdatedAt = cat?.profileUpdatedAt ?? 0;
   const todayCountFrom = Math.max(todayStartMs, profileUpdatedAt);
 
-  const todayTotal = Math.round(
+  // Slot times (HH:MM) yang sudah dikirim otomatis hari ini (ada log aktual-nya).
+  // Pakai todayCountFrom + catId agar sinkron persis dengan todayLoggedTotal.
+  const deliveredTodaySlots = useMemo(() => {
+    const s = new Set<string>();
+    if (!cat?.id) return s;
+    feedingLogs
+      .filter((l) => l.notes === 'scheduled' && l.catId === cat.id && l.timestamp >= todayCountFrom)
+      .forEach((l) => {
+        const d = new Date(l.timestamp);
+        const logMin = d.getHours() * 60 + d.getMinutes();
+        schedule.forEach((sl) => {
+          const [slH, slM] = sl.time.split(':').map(Number);
+          if (Math.abs(logMin - (slH * 60 + slM)) <= 15) s.add(sl.time);
+        });
+      });
+    return s;
+  }, [feedingLogs, schedule, todayCountFrom, cat?.id]);
+
+  const todayLoggedTotal = Math.round(
     feedingLogs
       .filter((l) => l.catId === cat?.id && l.timestamp >= todayCountFrom)
       .reduce((sum, l) => sum + (l.amountDispensed ?? 0), 0)
   );
 
-  // Manual-only total today — used as basis for auto-slot adjustment
-  const todayManualTotal = Math.round(
-    feedingLogs
-      .filter((l) => l.catId === cat?.id && l.timestamp >= todayCountFrom && l.notes === 'manual')
-      .reduce((sum, l) => sum + (l.amountDispensed ?? 0), 0)
-  );
+  // Slot otomatis aktif yang jamnya sudah lewat & tidak ada log aktual = dianggap sudah terkirim.
+  // Termasuk slot sebelum profileUpdatedAt: kalau jam sudah lewat, tetap dianggap sudah diberikan.
+  const pastUnloggedAutoTotal = useMemo(() => {
+    if (!smartFeedEnabled) return 0;
+    return schedule
+      .filter((s) => s.active !== false && s.time <= currentTimeStr && !deliveredTodaySlots.has(s.time))
+      .reduce((sum, s) => sum + s.amount, 0);
+  }, [schedule, currentTimeStr, smartFeedEnabled, deliveredTodaySlots]);
+
+  const todayTotal = todayLoggedTotal + pastUnloggedAutoTotal;
 
   // Flag Firestore — di-clear oleh useCatData saat profil/target/jadwal berubah
   const isAtDailyLimit = cat?.dailyLimitReachedDate === todayStr;
@@ -241,47 +276,31 @@ export function FeedingControl() {
   const wouldExceed = dailyTarget > 0 && (todayTotal + feedingAmount) > dailyTarget;
   const progressPct = dailyTarget > 0 ? Math.min(Math.round((todayTotal / dailyTarget) * 100), 100) : 0;
 
-  // Sync to RTDB (ESP32 reads this) — future slots only, uses full todayTotal
-  const syncAdjustedSlots = useMemo(() => {
+  // Penyesuaian jadwal masa depan — satu sumber untuk display & RTDB, sesuai spec:
+  // Slot terdekat mendapat porsi penuh dulu, slot terjauh yang dikurangi/di-off.
+  // Jika remainingLimit = 0, semua slot masa depan menjadi 0g (OFF).
+  const adjustedFutureSlots = useMemo(() => {
     if (!dailyTarget) return null;
-    const allActiveSlots = schedule.filter((s) => s.active !== false);
-    const futureSlots = allActiveSlots.filter((s) => s.time > currentTimeStr);
-    if (futureSlots.length === 0) return null;
+    const futureActive = schedule
+      .filter((s) => s.active !== false && s.time > currentTimeStr)
+      .sort((a, b) => a.time.localeCompare(b.time)); // urut terdekat dulu
+    if (futureActive.length === 0) return null;
 
-    // Remaining = daily target minus everything given today (manual + auto already fired)
     const remaining = Math.max(0, dailyTarget - todayTotal);
-    const futureTotal = futureSlots.reduce((sum, s) => sum + s.amount, 0);
-    if (remaining >= futureTotal) return null;
+    const futureTotal = futureActive.reduce((sum, s) => sum + s.amount, 0);
+    if (remaining >= futureTotal) return null; // limit masih cukup, tidak perlu sesuaikan
 
-    const factor = futureTotal > 0 ? remaining / futureTotal : 0;
-    return futureSlots.map((s) => ({
-      time: s.time,
-      originalAmount: s.amount,
-      adjustedAmount: Math.max(0, Math.round(s.amount * factor)),
-    }));
+    // Greedy dari terdekat: slot terdekat dapat max dulu, sisanya ke slot berikutnya
+    let rem = remaining;
+    return futureActive.map((s) => {
+      const adjusted = Math.min(s.amount, rem);
+      rem = Math.max(0, rem - adjusted);
+      return { time: s.time, originalAmount: s.amount, adjustedAmount: adjusted };
+    });
   }, [dailyTarget, todayTotal, schedule, currentTimeStr]);
 
-  // Display adjustment — hanya muncul setelah ada pemberian manual hari ini (bukan preview slider)
-  const liveAdjustedSlots = useMemo(() => {
-    if (!dailyTarget || todayManualTotal <= 0) return null;
-    const allActiveSlots = schedule.filter((s) => s.active !== false);
-    const allActiveTotal = allActiveSlots.reduce((sum, s) => sum + s.amount, 0);
-    if (allActiveTotal <= 0) return null;
-
-    // Remaining for auto = daily target − manual yang sudah diberikan hari ini
-    const remainingForAuto = Math.max(0, dailyTarget - todayManualTotal);
-    if (remainingForAuto >= allActiveTotal) return null;
-
-    const factor = remainingForAuto / allActiveTotal;
-    return allActiveSlots.map((s) => ({
-      time: s.time,
-      originalAmount: s.amount,
-      adjustedAmount: Math.max(0, Math.round(s.amount * factor)),
-    }));
-  }, [dailyTarget, todayManualTotal, schedule]);
-
-  const futureScheduleTotal = syncAdjustedSlots
-    ? syncAdjustedSlots.reduce((sum, s) => sum + s.adjustedAmount, 0)
+  const futureScheduleTotal = adjustedFutureSlots
+    ? adjustedFutureSlots.reduce((sum, s) => sum + s.adjustedAmount, 0)
     : schedule.filter((s) => s.active !== false && s.time > currentTimeStr).reduce((sum, s) => sum + s.amount, 0);
 
   // Selected device object
@@ -321,7 +340,7 @@ export function FeedingControl() {
   useEffect(() => {
     if (!rtdb || devices.length === 0 || schedule.length === 0) return;
     const effectiveSlots = schedule.map((s) => {
-      const adj = syncAdjustedSlots?.find((a) => a.time === s.time);
+      const adj = adjustedFutureSlots?.find((a) => a.time === s.time);
       return {
         time: s.time,
         amount: adj !== undefined ? adj.adjustedAmount : s.amount,
@@ -336,7 +355,7 @@ export function FeedingControl() {
     devices.forEach((device) => {
       set(ref(rtdb, `devices/${device.id}/schedule`), data).catch(console.error);
     });
-  }, [schedule, syncAdjustedSlots, smartFeedEnabled, isAtDailyLimit, devices]);
+  }, [schedule, adjustedFutureSlots, smartFeedEnabled, isAtDailyLimit, devices]);
 
   // ── Firestore helpers ────────────────────────────────────────────────────
   const catDocRef = () => doc(db, 'cats', cat!.id);
@@ -360,14 +379,14 @@ export function FeedingControl() {
   useEffect(() => {
     if (!targetOwnerId || todayTotal === lastSyncedTotalRef.current) return;
     lastSyncedTotalRef.current = todayTotal;
-    const adjustment = syncAdjustedSlots
-      ? { date: todayStr, manualTotal: todayTotal, slots: syncAdjustedSlots }
+    const adjustment = adjustedFutureSlots
+      ? { date: todayStr, manualTotal: todayTotal, slots: adjustedFutureSlots }
       : null;
     if (!cat?.id) return;
     updateDoc(doc(db, 'cats', cat.id), {
       dailyAdjustments: adjustment,
     }).catch(console.error);
-  }, [todayTotal, cat, syncAdjustedSlots, todayStr]);
+  }, [todayTotal, cat, adjustedFutureSlots, todayStr]);
 
   // ── Smart Feed Toggle ─────────────────────────────────────────────────────
   const handleToggleSmartFeed = async () => {
@@ -508,9 +527,9 @@ export function FeedingControl() {
     const scheduleExceeded = scheduleTotal > dailyTarget;
     const isAnyExceeded = scheduleExceeded;
 
-    // Sisa otomatis = target - manual hari ini
-    const autoRemainingWithPending = Math.max(0, dailyTarget - todayManualTotal - feedingAmount);
-    const showAdjustInfo = todayManualTotal > 0 || feedingAmount > 0;
+    // Sisa otomatis = target - semua yang sudah diberikan hari ini (manual + auto)
+    const autoRemainingWithPending = Math.max(0, dailyTarget - todayTotal - feedingAmount);
+    const showAdjustInfo = todayTotal > 0 || feedingAmount > 0;
 
     return (
       <div className={cn(
@@ -530,7 +549,7 @@ export function FeedingControl() {
           </p>
           {!scheduleExceeded && showAdjustInfo && (
             <p className="mt-1 pt-1 border-t border-current/20">
-              Manual hari ini: <strong>{todayManualTotal}g</strong>
+              Sudah diberikan: <strong>{todayTotal}g</strong>
               {feedingAmount > 0 && <> + kirim: <strong>{feedingAmount}g</strong></>}
               {' '}→ Sisa otomatis: <strong>{autoRemainingWithPending}g</strong>
               {autoRemainingWithPending < scheduleTotal && (
@@ -546,7 +565,7 @@ export function FeedingControl() {
   if (loading) {
     return (
       <div className="flex items-center justify-center h-64">
-        <div className="w-10 h-10 rounded-full border-4 border-amber-200 border-t-amber-500 animate-spin" />
+        <img src="/load.gif" alt="loading" className="h-24 w-auto object-contain" />
       </div>
     );
   }
@@ -1115,14 +1134,14 @@ export function FeedingControl() {
           {dailyTarget > 0 && <DailyTargetAlert />}
 
           {/* Smart adjustment active notice */}
-          {liveAdjustedSlots && liveAdjustedSlots.length > 0 && (
+          {adjustedFutureSlots && adjustedFutureSlots.length > 0 && (
             <div className="flex items-start gap-2.5 p-3 rounded-xl border text-xs bg-indigo-50 border-indigo-100">
               <Zap className="w-3.5 h-3.5 shrink-0 mt-0.5 text-indigo-400" />
               <div className="text-indigo-700">
                 <p className="font-black">Smart Adjustment Aktif</p>
                 <p className="mt-0.5">
-                  Sudah diberikan {todayManualTotal}g manual — sisa{' '}
-                  {Math.max(0, dailyTarget - todayManualTotal)}g untuk jadwal otomatis.{' '}
+                  Sudah diberikan {todayTotal}g hari ini — sisa{' '}
+                  {Math.max(0, dailyTarget - todayTotal)}g untuk jadwal otomatis.{' '}
                   Porsi yang ditulis <span className="line-through">dicoret</span> = porsi asli.
                 </p>
               </div>
@@ -1152,9 +1171,13 @@ export function FeedingControl() {
           {/* Slot list */}
           <div className="flex-1 overflow-y-auto space-y-4 min-h-0">
             {schedule.map((slot, index) => {
-              const adjSlot = liveAdjustedSlots?.find((a) => a.time === slot.time);
+              const adjSlot = adjustedFutureSlots?.find((a) => a.time === slot.time);
               const displayAmount = adjSlot?.adjustedAmount ?? slot.amount;
               const wasAdjusted = adjSlot !== undefined && adjSlot.adjustedAmount !== slot.amount;
+              const deliveredToday = deliveredTodaySlots.has(slot.time);
+              // Slot aktif yang waktunya sudah lewat hari ini → ESP32 pasti sudah mengirim
+              const isPastToday = slot.active !== false && smartFeedEnabled && slot.time <= currentTimeStr;
+              const isDoneToday = deliveredToday || isPastToday;
 
               return editingIndex === index ? (
                 <div
@@ -1205,6 +1228,8 @@ export function FeedingControl() {
                     'group flex items-center justify-between px-4 py-3 rounded-3xl border transition-all',
                     !smartFeedEnabled || isAtDailyLimit
                       ? 'bg-gray-50 border-gray-200 opacity-50 grayscale'
+                      : isDoneToday
+                      ? 'bg-gray-50 border-gray-200 opacity-60'
                       : slot.active !== false
                       ? 'bg-white border-gray-100 hover:border-amber-200'
                       : 'bg-gray-50 border-gray-100 opacity-60'
@@ -1214,7 +1239,13 @@ export function FeedingControl() {
                     <span className="text-2xl">{getSlotIcon(slot.time)}</span>
                     <div>
                       <p className="font-black text-gray-900 text-sm">{slot.time}</p>
-                      <p className="text-xs text-gray-400">{slot.label ?? getSlotLabel(slot.time)}</p>
+                      {isDoneToday ? (
+                        <p className="text-xs text-green-500 font-bold">
+                          {deliveredToday ? '✓ Terkirim hari ini' : '✓ Sudah terlewati'}
+                        </p>
+                      ) : (
+                        <p className="text-xs text-gray-400">{slot.label ?? getSlotLabel(slot.time)}</p>
+                      )}
                     </div>
                     <div className="w-px h-8 bg-gray-100" />
                     <div>
@@ -1241,7 +1272,9 @@ export function FeedingControl() {
                       onClick={() => handleToggleSlot(index)}
                       className={cn(
                         'w-12 h-12 rounded-2xl flex items-center justify-center border-2 transition-all',
-                        slot.active !== false
+                        isDoneToday
+                          ? 'bg-gray-100 border-gray-200 text-gray-300 cursor-default'
+                          : slot.active !== false
                           ? 'bg-green-50 border-green-400 text-green-600 hover:bg-green-100'
                           : 'bg-white border-gray-200 text-gray-300 hover:border-green-300'
                       )}

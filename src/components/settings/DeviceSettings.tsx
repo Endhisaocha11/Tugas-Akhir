@@ -144,7 +144,7 @@ export function DeviceSettings() {
   // Sync dari Firestore / RTDB device data
   useEffect(() => {
     if (!device) return;
-    const val = (device as any).calibrationFactor ?? 404;
+    const val = (device as any).calibrationFactor || 404;
     setCalibrationFactor(val);
     const prefs = (device as any).notifPrefs;
     if (prefs) setNotifPrefs(prefs);
@@ -204,7 +204,7 @@ export function DeviceSettings() {
   if (loading) {
     return (
       <div className="flex items-center justify-center h-64">
-        <div className="w-10 h-10 rounded-full border-4 border-amber-200 border-t-amber-500 animate-spin" />
+        <img src="/load.gif" alt="loading" className="h-24 w-auto object-contain" />
       </div>
     );
   }
