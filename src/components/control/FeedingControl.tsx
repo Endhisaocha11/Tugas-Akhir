@@ -276,8 +276,14 @@ export function FeedingControl() {
   const wouldExceed = dailyTarget > 0 && (todayTotal + feedingAmount) > dailyTarget;
   const progressPct = dailyTarget > 0 ? Math.min(Math.round((todayTotal / dailyTarget) * 100), 100) : 0;
 
-  // Penyesuaian jadwal masa depan — semua slot aktif dikurangi proporsional
-  // agar kucing tetap makan di setiap waktu makan, tidak ada yang di-skip total.
+  // Redistribusi jadwal masa depan — semua slot aktif disesuaikan proporsional
+  // agar sum(adjusted) = remaining = dailyTarget - todayTotal selalu.
+  //
+  // Rules:
+  // - Manual feeding → remaining turun → slot dikurangi proporsional
+  // - Slot dinonaktifkan → remaining naik relatif terhadap futureTotal → slot lain naik
+  // - Slot sudah berjalan → tidak diubah (hanya futureActive yang diproses)
+  // - sum(adjusted) = remaining persis (slot terakhir menyerap selisih pembulatan)
   const adjustedFutureSlots = useMemo(() => {
     if (!dailyTarget) return null;
     const futureActive = schedule
@@ -287,19 +293,26 @@ export function FeedingControl() {
 
     const remaining = Math.max(0, dailyTarget - todayTotal);
     const futureTotal = futureActive.reduce((sum, s) => sum + s.amount, 0);
-    if (remaining >= futureTotal) return null; // limit masih cukup, tidak perlu sesuaikan
+
+    // Tidak perlu sesuaikan jika sudah persis sama
+    if (remaining === futureTotal) return null;
 
     if (remaining <= 0) {
       return futureActive.map((s) => ({ time: s.time, originalAmount: s.amount, adjustedAmount: 0 }));
     }
 
-    // Proporsional: setiap slot dikurangi dengan faktor yang sama
+    // Proporsional scale (naik ATAU turun) — faktor = remaining / futureTotal
+    // Slot terakhir menyerap sisa pembulatan agar total = remaining persis
     const factor = remaining / futureTotal;
-    return futureActive.map((s) => ({
-      time: s.time,
-      originalAmount: s.amount,
-      adjustedAmount: Math.round(s.amount * factor),
-    }));
+    let allocated = 0;
+    return futureActive.map((s, i) => {
+      const isLast = i === futureActive.length - 1;
+      const adjusted = isLast
+        ? Math.max(0, remaining - allocated)
+        : Math.round(s.amount * factor);
+      allocated += adjusted;
+      return { time: s.time, originalAmount: s.amount, adjustedAmount: adjusted };
+    });
   }, [dailyTarget, todayTotal, schedule, currentTimeStr]);
 
   const futureScheduleTotal = adjustedFutureSlots
@@ -811,9 +824,9 @@ export function FeedingControl() {
                 />
               </div>
               <p className="text-xs text-gray-400 mt-1.5">
-                Sisa kapasitas:{' '}
+                Sisa otomatis terjadwal:{' '}
                 <span className={cn('font-bold', progressPct >= 100 ? 'text-red-500' : progressPct >= 75 ? 'text-amber-500' : 'text-green-600')}>
-                  {Math.max(0, dailyTarget - todayTotal)}g
+                  {futureScheduleTotal}g
                 </span>
               </p>
             </div>
