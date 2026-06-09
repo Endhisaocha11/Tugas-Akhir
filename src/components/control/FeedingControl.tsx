@@ -276,27 +276,30 @@ export function FeedingControl() {
   const wouldExceed = dailyTarget > 0 && (todayTotal + feedingAmount) > dailyTarget;
   const progressPct = dailyTarget > 0 ? Math.min(Math.round((todayTotal / dailyTarget) * 100), 100) : 0;
 
-  // Penyesuaian jadwal masa depan — satu sumber untuk display & RTDB, sesuai spec:
-  // Slot terdekat mendapat porsi penuh dulu, slot terjauh yang dikurangi/di-off.
-  // Jika remainingLimit = 0, semua slot masa depan menjadi 0g (OFF).
+  // Penyesuaian jadwal masa depan — semua slot aktif dikurangi proporsional
+  // agar kucing tetap makan di setiap waktu makan, tidak ada yang di-skip total.
   const adjustedFutureSlots = useMemo(() => {
     if (!dailyTarget) return null;
     const futureActive = schedule
       .filter((s) => s.active !== false && s.time > currentTimeStr)
-      .sort((a, b) => a.time.localeCompare(b.time)); // urut terdekat dulu
+      .sort((a, b) => a.time.localeCompare(b.time));
     if (futureActive.length === 0) return null;
 
     const remaining = Math.max(0, dailyTarget - todayTotal);
     const futureTotal = futureActive.reduce((sum, s) => sum + s.amount, 0);
     if (remaining >= futureTotal) return null; // limit masih cukup, tidak perlu sesuaikan
 
-    // Greedy dari terdekat: slot terdekat dapat max dulu, sisanya ke slot berikutnya
-    let rem = remaining;
-    return futureActive.map((s) => {
-      const adjusted = Math.min(s.amount, rem);
-      rem = Math.max(0, rem - adjusted);
-      return { time: s.time, originalAmount: s.amount, adjustedAmount: adjusted };
-    });
+    if (remaining <= 0) {
+      return futureActive.map((s) => ({ time: s.time, originalAmount: s.amount, adjustedAmount: 0 }));
+    }
+
+    // Proporsional: setiap slot dikurangi dengan faktor yang sama
+    const factor = remaining / futureTotal;
+    return futureActive.map((s) => ({
+      time: s.time,
+      originalAmount: s.amount,
+      adjustedAmount: Math.round(s.amount * factor),
+    }));
   }, [dailyTarget, todayTotal, schedule, currentTimeStr]);
 
   const futureScheduleTotal = adjustedFutureSlots
