@@ -4,7 +4,7 @@ import {
   ShieldCheck, RefreshCw, Cpu, Save,
   CheckCircle2, AlertTriangle, Zap, Activity,
   Weight, Clock, Loader2, SwitchCamera,
-  Settings2, PackageOpen,
+  Settings2, PackageOpen, Trash2,
 } from 'lucide-react';
 import { motion } from 'motion/react';
 import { doc, updateDoc } from 'firebase/firestore';
@@ -13,7 +13,8 @@ import { db, rtdb } from '../../lib/firebase';
 import { useCatData } from '../../lib/useCatData';
 import { useDevice } from '../../lib/DeviceContext';
 import { useAuth } from '../../lib/AuthContext';
-import { releaseDevice } from '../../lib/useDeviceClaim';
+import { useAllDevices } from '../../lib/useDevices';
+import { releaseDevice, releaseAllDevices } from '../../lib/useDeviceClaim';
 import { cn } from '../../lib/utils';
 
 function DeviceCard({ device, deviceNumber, targetOwnerId }: {
@@ -102,11 +103,17 @@ export function DeviceSettings() {
   const { user } = useAuth();
   const { device, devices, targetOwnerId, loading } = useCatData();
   const { selectedDeviceId } = useDevice();
+  const { devices: allSystemDevices } = useAllDevices();
 
-  // Release device
+  // Release single device
   const [showReleaseConfirm, setShowReleaseConfirm] = useState(false);
   const [releasing, setReleasing] = useState(false);
   const [releaseError, setReleaseError] = useState<string | null>(null);
+
+  // Release ALL devices
+  const [showReleaseAllConfirm, setShowReleaseAllConfirm] = useState(false);
+  const [releasingAll, setReleasingAll] = useState(false);
+  const [releaseAllError, setReleaseAllError] = useState<string | null>(null);
 
   const handleReleaseDevice = async () => {
     if (!user || !devices[0]?.id) return;
@@ -114,16 +121,27 @@ export function DeviceSettings() {
     setReleaseError(null);
     try {
       await releaseDevice(devices[0].id, user.uid);
-      // AuthContext onSnapshot akan update profile.claimedDeviceId → null
-      // App.tsx otomatis redirect ke DeviceSelectionScreen
     } catch {
       setReleaseError('Gagal melepas perangkat. Periksa koneksi dan coba lagi.');
       setReleasing(false);
     }
   };
 
+  const handleReleaseAllDevices = async () => {
+    if (!user) return;
+    setReleasingAll(true);
+    setReleaseAllError(null);
+    try {
+      const ids = allSystemDevices.map((d) => d.id);
+      await releaseAllDevices(user.uid, ids);
+    } catch {
+      setReleaseAllError('Gagal melepas semua perangkat. Periksa koneksi dan coba lagi.');
+      setReleasingAll(false);
+    }
+  };
+
   // Calibration factor — angka untuk kirim, string untuk input agar bisa diketik bebas
-  const [calibrationFactor, setCalibrationFactor] = useState<number>(404);
+  const [calibrationFactor, setCalibrationFactor] = useState<number>(420);
   const [savingCalib, setSavingCalib] = useState(false);
   const [calibSaved, setCalibSaved] = useState(false);
 
@@ -144,7 +162,7 @@ export function DeviceSettings() {
   // Sync dari Firestore / RTDB device data
   useEffect(() => {
     if (!device) return;
-    const val = (device as any).calibrationFactor || 404;
+    const val = (device as any).calibrationFactor || 420;
     setCalibrationFactor(val);
     const prefs = (device as any).notifPrefs;
     if (prefs) setNotifPrefs(prefs);
@@ -401,7 +419,7 @@ export function DeviceSettings() {
                 devices/&#123;ID&#125;/calibration/loadCellFactor
               </code>
               <p className="text-[11px] text-gray-400 pt-1">
-                Default firmware: <span className="font-black text-gray-600">404</span> · Dibaca ESP32 via <code className="font-black">readCalibrationFromRTDB()</code>
+                Default firmware: <span className="font-black text-gray-600">420</span> · Dibaca ESP32 via <code className="font-black">readCalibrationFromRTDB()</code>
               </p>
             </div>
 
@@ -665,6 +683,113 @@ export function DeviceSettings() {
                 {releasing
                   ? <><Loader2 className="w-4 h-4 animate-spin" /> Melepas...</>
                   : <><SwitchCamera className="w-4 h-4" /> Ya, Lepas &amp; Ganti</>}
+              </button>
+            </div>
+          </motion.div>
+        )}
+      </section>
+
+      {/* ── LEPAS SEMUA ALAT ── */}
+      <section className="space-y-4">
+        <div className="flex items-center gap-3">
+          <div className="w-8 h-8 bg-red-50 rounded-xl flex items-center justify-center border border-red-100">
+            <Trash2 className="w-4 h-4 text-red-500" />
+          </div>
+          <div>
+            <h3 className="font-black text-xl text-gray-900">Lepas Semua Alat</h3>
+            <p className="text-xs text-gray-400">Reset total — semua feeder dilepas dari akun ini</p>
+          </div>
+        </div>
+
+        {!showReleaseAllConfirm ? (
+          <div className="bg-white border border-gray-100 rounded-4xl p-5 sm:p-6 shadow-sm space-y-4">
+            {/* Daftar semua device di sistem (RTDB) */}
+            {allSystemDevices.length === 0 ? (
+              <div className="flex items-center gap-3 bg-gray-50 rounded-2xl px-4 py-3">
+                <AlertTriangle className="w-4 h-4 text-gray-400 shrink-0" />
+                <p className="text-sm text-gray-500 font-semibold">Tidak ada perangkat terdeteksi di sistem.</p>
+              </div>
+            ) : (
+              <div className="space-y-2">
+                {allSystemDevices.map((d) => (
+                  <div key={d.id} className="flex items-center justify-between gap-3 bg-gray-50 rounded-2xl px-4 py-3">
+                    <div className="flex items-center gap-2.5 min-w-0">
+                      <span className={cn('w-2 h-2 rounded-full shrink-0', d.isOnline ? 'bg-green-500 animate-pulse' : 'bg-gray-300')} />
+                      <div className="min-w-0">
+                        <p className="text-sm font-black text-gray-800 truncate">{d.deviceName ?? d.id}</p>
+                        <p className="text-[11px] text-gray-400 truncate">{d.id}</p>
+                      </div>
+                    </div>
+                    <span className={cn(
+                      'text-[10px] font-black px-2.5 py-1 rounded-full shrink-0',
+                      d.isClaimed ? 'bg-amber-100 text-amber-700' : 'bg-green-100 text-green-700'
+                    )}>
+                      {d.isClaimed ? 'Terklaim' : 'Bebas'}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            )}
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pt-1">
+              <p className="text-xs text-gray-400 leading-relaxed">
+                <span className="font-black text-gray-700">{allSystemDevices.length} perangkat</span> terdeteksi di sistem.
+                Semua akan dilepas dan dapat diklaim ulang.
+                Profil kucing &amp; jadwal <strong>tetap tersimpan</strong>.
+              </p>
+              <button
+                type="button"
+                onClick={() => setShowReleaseAllConfirm(true)}
+                disabled={allSystemDevices.length === 0}
+                className="w-full sm:w-auto sm:shrink-0 flex items-center justify-center gap-2 px-5 py-3 sm:py-2.5 rounded-2xl bg-red-600 hover:bg-red-700 text-white text-sm font-black transition-colors shadow-red-300 shadow-md disabled:opacity-40 disabled:cursor-not-allowed"
+              >
+                <Trash2 className="w-4 h-4 shrink-0" />
+                Lepas Semua
+              </button>
+            </div>
+          </div>
+        ) : (
+          <motion.div
+            initial={{ opacity: 0, scale: 0.97 }}
+            animate={{ opacity: 1, scale: 1 }}
+            className="bg-red-50 border-2 border-red-300 rounded-4xl p-6 space-y-4"
+          >
+            <div className="flex items-start gap-4">
+              <div className="w-12 h-12 bg-red-100 rounded-2xl flex items-center justify-center shrink-0">
+                <Trash2 className="w-6 h-6 text-red-600" />
+              </div>
+              <div>
+                <p className="font-black text-lg text-red-800">Konfirmasi Lepas Semua</p>
+                <p className="text-sm text-red-600 mt-1 leading-relaxed">
+                  <strong>{allSystemDevices.length} perangkat</strong> di sistem akan dilepas dari semua akun.
+                  Siapa pun perlu klaim ulang feeder untuk bisa menggunakannya.
+                  Profil kucing dan jadwal pakan <strong>tetap tersimpan</strong>.
+                </p>
+              </div>
+            </div>
+            {releaseAllError && (
+              <div className="flex items-center gap-2 bg-red-100 rounded-xl px-4 py-2.5">
+                <AlertTriangle className="w-4 h-4 text-red-600 shrink-0" />
+                <p className="text-sm text-red-700 font-semibold">{releaseAllError}</p>
+              </div>
+            )}
+            <div className="flex gap-3 pt-1">
+              <button
+                type="button"
+                onClick={() => { setShowReleaseAllConfirm(false); setReleaseAllError(null); }}
+                disabled={releasingAll}
+                className="flex-1 py-3 rounded-2xl border-2 border-gray-200 text-sm font-black text-gray-600 hover:bg-white transition-colors disabled:opacity-50"
+              >
+                Batal
+              </button>
+              <button
+                type="button"
+                onClick={handleReleaseAllDevices}
+                disabled={releasingAll}
+                className="flex-1 py-3 rounded-2xl bg-red-600 hover:bg-red-700 text-white text-sm font-black transition-colors disabled:opacity-60 flex items-center justify-center gap-2 shadow-red-300 shadow-md"
+              >
+                {releasingAll
+                  ? <><Loader2 className="w-4 h-4 animate-spin" /> Melepas semua...</>
+                  : <><Trash2 className="w-4 h-4" /> Ya, Lepas Semua</>}
               </button>
             </div>
           </motion.div>

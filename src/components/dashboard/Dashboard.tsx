@@ -1,5 +1,5 @@
 import { useState, useMemo, useEffect } from 'react';
-import { Layers, AlertCircle, Weight, Wifi, WifiOff, Settings2, X, Copy, Check, Link2, Clock, Info, TrendingUp, Activity, BarChart3, PieChart as PieIcon, Calendar, ChevronLeft, ChevronRight, Utensils, CalendarClock } from 'lucide-react';
+import { Layers, AlertCircle, Weight, Wifi, WifiOff, Settings2, X, Copy, Check, Link2, Clock, TrendingUp, Activity, BarChart3, PieChart as PieIcon, Calendar, ChevronLeft, ChevronRight, Utensils, CalendarClock } from 'lucide-react';
 import {
   AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip,
   ResponsiveContainer, BarChart, Bar, PieChart, Pie, Cell, ReferenceLine,
@@ -444,27 +444,27 @@ export function Dashboard() {
   const todayStr = localDateStr();
   const profileUpdatedAt = cat?.profileUpdatedAt ?? 0;
 
-  // Sama persis dengan FeedingHistory: filter profileUpdatedAt tanpa catId filter
-  // (feedingLogs dari useCatData sudah hanya milik owner ini)
-  const catLogs = useMemo(
-    () => feedingLogs.filter((l) => l.timestamp >= profileUpdatedAt),
-    [feedingLogs, profileUpdatedAt]
-  );
-  // Untuk banner "data direset" — hanya log catId ini yang lebih lama dari profileUpdatedAt
-  const allCatLogs = useMemo(
-    () => feedingLogs.filter((l) => l.catId === cat?.id),
-    [feedingLogs, cat?.id]
-  );
-  const hiddenLogsCount = allCatLogs.filter((l) => l.timestamp < profileUpdatedAt).length;
+  const todayStartMs = useMemo(() => {
+    const d = new Date();
+    d.setHours(0, 0, 0, 0);
+    return d.getTime();
+  }, []);
+  const todayCountFrom = Math.max(todayStartMs, profileUpdatedAt);
+
+  // Semua log tanpa filter profileUpdatedAt — profileUpdatedAt hanya mempengaruhi
+  // todayCountFrom (hitung harian), bukan visibilitas riwayat penuh.
+  const catLogs = feedingLogs;
 
   // Log aktif berdasarkan filter yang dipilih
   const activeLogs = useMemo(() => {
     if (filterMode === 'all') return catLogs;
-    const dateStr = filterMode === 'today' ? todayStr : selectedDate;
-    const start = new Date(dateStr + 'T00:00:00').getTime();
-    const end   = new Date(dateStr + 'T23:59:59.999').getTime();
+    if (filterMode === 'today') {
+      return catLogs.filter((l) => l.timestamp >= todayCountFrom && l.timestamp <= Date.now());
+    }
+    const start = new Date(selectedDate + 'T00:00:00').getTime();
+    const end   = new Date(selectedDate + 'T23:59:59.999').getTime();
     return catLogs.filter((l) => l.timestamp >= start && l.timestamp <= end);
-  }, [filterMode, selectedDate, catLogs, todayStr]);
+  }, [filterMode, selectedDate, catLogs, todayCountFrom]);
 
   const selectedTotal = Math.round(
     activeLogs.reduce((sum, l) => sum + (l.amountDispensed ?? 0), 0)
@@ -488,13 +488,6 @@ export function Dashboard() {
     const now = new Date();
     return `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
   }, [minuteTick]);
-
-  const todayStartMs = useMemo(() => {
-    const d = new Date();
-    d.setHours(0, 0, 0, 0);
-    return d.getTime();
-  }, []);
-  const todayCountFrom = Math.max(todayStartMs, profileUpdatedAt);
 
   const schedule = useMemo(
     () => (cat?.feedingSchedule ?? []) as FeedingScheduleSlot[],
@@ -724,15 +717,6 @@ export function Dashboard() {
             <AlertCircle className="w-4 h-4 text-red-500 shrink-0" />
             <p className="text-sm font-semibold text-red-600">
               Stok pakan rendah ({foodStock}%) — segera isi ulang wadah.
-            </p>
-          </div>
-        )}
-        {profileUpdatedAt > 0 && hiddenLogsCount > 0 && (
-          <div className="flex items-start gap-3 bg-blue-50 border border-blue-100 rounded-2xl px-5 py-3.5">
-            <Info className="w-4 h-4 text-blue-400 shrink-0 mt-0.5" />
-            <p className="text-sm text-blue-600">
-              <span className="font-bold">Data direset.</span>{' '}
-              Profil diperbarui pada {new Date(profileUpdatedAt).toLocaleString('id-ID', { year: 'numeric', month: 'long', day: 'numeric', hour: '2-digit', minute: '2-digit' })}.
             </p>
           </div>
         )}

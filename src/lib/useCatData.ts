@@ -229,10 +229,14 @@ export function useCatData(): CatData {
     if (!isFirstLoad && (targetChanged || scheduleChanged || profileSavedExternally)) {
       const _d = new Date();
       const todayStr = `${_d.getFullYear()}-${String(_d.getMonth() + 1).padStart(2, '0')}-${String(_d.getDate()).padStart(2, '0')}`;
-      const updates: Record<string, string | null> = { dailyLimitReachedDate: null };
+      // dailyAdjustments selalu di-clear saat profil baru dimuat (profileUpdatedAt berubah),
+      // agar ESP32 tidak membaca slot amounts lama dari sesi sebelumnya.
+      const updates: Record<string, string | null> = {
+        dailyLimitReachedDate: null,
+        dailyAdjustments:      null,
+      };
       if (targetChanged || scheduleChanged) {
         updates.dailyLimitResetDate = todayStr;
-        updates.dailyAdjustments    = null;
       }
       updateDoc(doc(db, 'cats', cat.id), updates).catch(console.error);
     }
@@ -271,7 +275,7 @@ export function useCatData(): CatData {
           : fsDevice.currentWeightOnScale,
         servoStatus:          rtdbDeviceData?.servoStatus          ?? fsDevice.servoStatus,
         // RTDB adalah sumber utama kalibrasi (ESP32 baca/tulis ke sana); Firestore sebagai backup
-        calibrationFactor:    rtdbDeviceData?.calibration?.loadCellFactor || fsDevice.calibrationFactor || 404,
+        calibrationFactor:    rtdbDeviceData?.calibration?.loadCellFactor || fsDevice.calibrationFactor || 420,
       }
     : null;
 

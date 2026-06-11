@@ -343,10 +343,12 @@ export function FeedingControl() {
       .slice(0, 7);
   }, [feedingLogs, profileUpdatedAt]);
 
-  // Persist flag ke Firestore agar ESP32 tahu limit tercapai
+  // Persist flag ke Firestore agar ESP32 tahu limit tercapai.
+  // Jika dailyLimitResetDate == hari ini, berarti admin sudah manual reset → jangan tulis ulang.
   useEffect(() => {
     if (!isActuallyOverLimit || !cat) return;
     if (cat.dailyLimitReachedDate === todayStr) return;
+    if (cat.dailyLimitResetDate === todayStr) return;
     updateDoc(doc(db, 'cats', cat.id), {
       dailyLimitReachedDate: todayStr,
     }).catch(console.error);
@@ -615,8 +617,22 @@ export function FeedingControl() {
               Mode otomatis dinonaktifkan sementara hingga hari berikutnya.
             </p>
           </div>
-          <div className="shrink-0 px-4 py-2 bg-red-100 rounded-2xl text-red-700 text-xs font-black text-center">
-            {todayTotal}g / {dailyTarget}g
+          <div className="shrink-0 flex flex-col items-end gap-2">
+            <div className="px-4 py-1.5 bg-red-100 rounded-2xl text-red-700 text-xs font-black text-center">
+              {todayTotal}g / {dailyTarget}g
+            </div>
+            {cat && (
+              <button
+                type="button"
+                onClick={() => updateDoc(doc(db, 'cats', cat.id), {
+                  dailyLimitReachedDate: null,
+                  dailyLimitResetDate:   todayStr,
+                }).catch(console.error)}
+                className="px-3 py-1 bg-white border border-red-200 hover:bg-red-50 rounded-xl text-red-600 text-[11px] font-bold transition-colors"
+              >
+                Reset Limit
+              </button>
+            )}
           </div>
         </motion.div>
       )}

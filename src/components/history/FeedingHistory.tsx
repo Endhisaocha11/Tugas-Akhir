@@ -160,8 +160,9 @@ export function FeedingHistory() {
   const actualRows = useMemo((): ActualRow[] => {
     return feedingLogs
       .filter((log) => {
-        if (log.timestamp < profileUpdatedAt) return false;
-        if (filterToday && log.timestamp < todayStartMs) return false;
+        // "Hari Ini": gunakan todayCountFrom (max midnight, profileUpdatedAt)
+        // "Semua"/status filter: tampilkan semua log tanpa batas profileUpdatedAt
+        if (filterToday && log.timestamp < todayCountFrom) return false;
         if (filterStatus !== 'all' && log.status !== filterStatus) return false;
         if (search) {
           const dateStr = new Date(log.timestamp).toLocaleDateString('id-ID');

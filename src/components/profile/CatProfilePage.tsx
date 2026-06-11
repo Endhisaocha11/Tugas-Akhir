@@ -1,10 +1,11 @@
 import { useMemo, useRef, useState } from 'react';
-import { motion } from 'motion/react';
+import { motion, AnimatePresence } from 'motion/react';
 import {
   Scale, Heart, Activity, ShieldCheck, Calculator, Utensils,
   ChevronRight, AlertTriangle, CheckCircle2, ChevronDown, Camera, Loader2, Search,
+  RotateCcw, X,
 } from 'lucide-react';
-import { doc, updateDoc } from 'firebase/firestore';
+import { doc, updateDoc, setDoc, getDoc } from 'firebase/firestore';
 import { db } from '../../lib/firebase';
 import { useCatData } from '../../lib/useCatData';
 import { useAuth } from '../../lib/AuthContext';
@@ -54,7 +55,32 @@ function fmtDate(ms: number): string {
   });
 }
 
-// ── Profile stats calculator ──────────────────────────────────────────────────
+// ── Profile identity key — dipakai untuk grouping ────────────────────────────
+
+function profileIdentityKey(snap: CatProfileSnapshot): string {
+  const sched = (snap.feedingSchedule ?? [])
+    .map((s) => `${s.time}:${s.amount}:${s.active ?? true}`)
+    .sort().join('|');
+  return `${snap.name}__${snap.weight}__${snap.dailyGramTarget}__${snap.bodyCondition}__${snap.activity ?? 'normal'}__${sched}`;
+}
+
+// ── Grouped profile ───────────────────────────────────────────────────────────
+
+export interface ActivePeriod {
+  savedAt: number;
+  endedAt?: number; // undefined = masih aktif
+}
+
+export interface ProfileGroup {
+  key: string;
+  representative: CatProfileSnapshot; // data profil untuk ditampilkan
+  periods: ActivePeriod[];            // semua rentang aktif, sorted asc
+  isCurrent: boolean;
+  originalIndex: number;              // index terbaru dari snapshot group ini
+  restoreSnapshot: CatProfileSnapshot; // snapshot terbaru untuk di-restore
+}
+
+// ── Profile stats calculator — mendukung banyak periode ──────────────────────
 
 interface ProfileStats {
   totalGrams: number;
@@ -65,13 +91,13 @@ interface ProfileStats {
   dayBreakdown: Array<{ dateKey: string; grams: number }>;
 }
 
-function calcStats(snapshot: CatProfileSnapshot, feedingLogs: FeedingLog[]): ProfileStats {
-  const from = snapshot.savedAt ?? 0;
-  const to   = snapshot.endedAt ?? Infinity;
-  const logs = feedingLogs.filter((l) => l.timestamp >= from && l.timestamp < to);
+function calcStats(periods: ActivePeriod[], feedingLogs: FeedingLog[]): ProfileStats {
+  const logs = feedingLogs.filter((l) =>
+    periods.some((p) => l.timestamp >= p.savedAt && l.timestamp < (p.endedAt ?? Infinity))
+  );
 
   const totalGrams  = Math.round(logs.reduce((s, l) => s + (l.amountDispensed ?? 0), 0));
-  const days        = calcDaysActive(snapshot.savedAt, snapshot.endedAt);
+  const days        = periods.reduce((sum, p) => sum + calcDaysActive(p.savedAt, p.endedAt), 0);
   const avgPerDay   = days > 0 ? Math.round(totalGrams / days) : 0;
   const manualCount = logs.filter((l) => l.notes === 'manual').length;
   const autoCount   = logs.filter((l) => l.notes !== 'manual').length;
@@ -93,21 +119,53 @@ function calcStats(snapshot: CatProfileSnapshot, feedingLogs: FeedingLog[]): Pro
 // ── ProfileHistoryCard ────────────────────────────────────────────────────────
 
 function ProfileHistoryCard({
-  snapshot,
-  index,
+  group,
   feedingLogs,
-  isCurrent,
+  isAdmin,
+  onRestore,
 }: {
-  snapshot: CatProfileSnapshot;
-  index: number;
+  group: ProfileGroup;
   feedingLogs: FeedingLog[];
-  isCurrent: boolean;
+  isAdmin?: boolean;
+  onRestore?: () => void;
 }) {
   const [expanded, setExpanded] = useState(false);
-  const stats    = useMemo(() => calcStats(snapshot, feedingLogs), [snapshot, feedingLogs]);
-  const _now = new Date();
+  const snap  = group.representative;
+  const stats = useMemo(() => calcStats(group.periods, feedingLogs), [group.periods, feedingLogs]);
+  const _now  = new Date();
   const todayStr = `${_now.getFullYear()}-${String(_now.getMonth() + 1).padStart(2, '0')}-${String(_now.getDate()).padStart(2, '0')}`;
-  const bc       = snapshot.bodyCondition as number;
+  const bc    = snap.bodyCondition as number;
+  const { isCurrent, periods, originalIndex } = group;
+
+  // Gabung periode "on" yang gap-nya < 1 hari (restore di hari sama = 1 periode)
+  const mergedPeriods = useMemo((): ActivePeriod[] => {
+    const sorted = [...periods].sort((a, b) => a.savedAt - b.savedAt);
+    const result: ActivePeriod[] = [];
+    sorted.forEach((p) => {
+      if (result.length === 0) { result.push({ ...p }); return; }
+      const last = result[result.length - 1];
+      const gap  = p.savedAt - (last.endedAt ?? p.savedAt);
+      if (gap < DAY_MS) {
+        last.endedAt = p.endedAt; // perpanjang periode yang sudah ada
+      } else {
+        result.push({ ...p });
+      }
+    });
+    return result;
+  }, [periods]);
+
+  // Bangun timeline: periode aktif + gap "off" yang ≥ 1 hari
+  const timeline = useMemo(() => {
+    const items: Array<{ type: 'on' | 'off'; from: number; to?: number }> = [];
+    mergedPeriods.forEach((p, i) => {
+      items.push({ type: 'on', from: p.savedAt, to: p.endedAt });
+      const next = mergedPeriods[i + 1];
+      if (p.endedAt && next && next.savedAt - p.endedAt >= DAY_MS) {
+        items.push({ type: 'off', from: p.endedAt, to: next.savedAt });
+      }
+    });
+    return items;
+  }, [mergedPeriods]);
 
   return (
     <div className={cn(
@@ -127,21 +185,26 @@ function ProfileHistoryCard({
               'w-11 h-11 rounded-2xl flex items-center justify-center shrink-0 font-black text-sm',
               isCurrent ? 'bg-amber-400 text-white' : 'bg-gray-100 text-gray-500',
             )}>
-              #{index + 1}
+              #{originalIndex + 1}
             </div>
             <div>
               <div className="flex items-center gap-2 flex-wrap">
-                <span className="font-black text-gray-900 text-lg">{snapshot.name}</span>
+                <span className="font-black text-gray-900 text-lg">{snap.name}</span>
                 {isCurrent
                   ? <span className="text-[10px] bg-amber-400 text-white px-2.5 py-0.5 rounded-full font-black uppercase tracking-wide">Aktif Saat Ini</span>
                   : <span className="text-[10px] bg-gray-100 text-gray-500 px-2.5 py-0.5 rounded-full font-black uppercase tracking-wide">Selesai</span>
                 }
+                {mergedPeriods.length > 1 && (
+                  <span className="text-[10px] bg-blue-100 text-blue-600 px-2.5 py-0.5 rounded-full font-black uppercase tracking-wide">
+                    {mergedPeriods.length}× dipakai
+                  </span>
+                )}
               </div>
               <p className="text-xs text-gray-400 mt-0.5">
-                {snapshot.savedAt ? fmtDate(snapshot.savedAt) : 'Profil awal'}
-                {snapshot.endedAt ? ` — ${fmtDate(snapshot.endedAt)}` : ' — Sekarang'}
+                <span className="font-bold text-gray-600">{stats.days} hari aktif total</span>
                 {' · '}
-                <span className="font-bold text-gray-600">{stats.days} hari aktif</span>
+                {fmtDate(periods[0].savedAt)}
+                {isCurrent ? ' — Sekarang' : periods.length > 1 ? ` … ${fmtDate(periods[periods.length - 1].endedAt ?? Date.now())}` : ` — ${fmtDate(periods[0].endedAt ?? Date.now())}`}
               </p>
             </div>
           </div>
@@ -151,6 +214,16 @@ function ProfileHistoryCard({
               <p className="text-base font-black text-amber-500">{stats.totalGrams}g</p>
               <p className="text-[10px] text-gray-400">total pakan</p>
             </div>
+            {!isCurrent && isAdmin && onRestore && (
+              <button
+                type="button"
+                onClick={(e) => { e.stopPropagation(); onRestore(); }}
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-amber-500 hover:bg-amber-400 text-white text-xs font-black transition-colors shadow-amber-200 shadow-sm"
+              >
+                <RotateCcw className="w-3 h-3" />
+                <span className="hidden sm:inline">Pakai Profil Ini</span>
+              </button>
+            )}
             <ChevronDown className={cn(
               'w-5 h-5 text-gray-400 transition-transform duration-200',
               expanded && 'rotate-180',
@@ -159,13 +232,52 @@ function ProfileHistoryCard({
         </div>
       </button>
 
+      {/* Periode aktif timeline — hanya tampil jika ada lebih dari 1 periode merged */}
+      {mergedPeriods.length > 1 && (
+        <div className="px-7 pb-3">
+          <p className="text-[10px] font-black uppercase tracking-widest text-gray-400 mb-2">Periode Penggunaan</p>
+          <div className="space-y-1.5">
+            {timeline.map((item, i) => (
+              <div key={i} className={cn(
+                'flex items-center gap-2.5 px-3 py-2 rounded-xl text-xs font-bold',
+                item.type === 'on'
+                  ? (item.to === undefined ? 'bg-amber-50 text-amber-700 border border-amber-100' : 'bg-green-50 text-green-700 border border-green-100')
+                  : 'bg-gray-50 text-gray-400 border border-gray-100',
+              )}>
+                <span className={cn(
+                  'w-2 h-2 rounded-full shrink-0',
+                  item.type === 'on' ? (item.to === undefined ? 'bg-amber-400 animate-pulse' : 'bg-green-400') : 'bg-gray-300',
+                )} />
+                {item.type === 'on' ? (
+                  <span>
+                    Aktif: <span className="font-black">{fmtDate(item.from)}</span>
+                    {' — '}
+                    <span className="font-black">{item.to ? fmtDate(item.to) : 'Sekarang'}</span>
+                    {' · '}
+                    {calcDaysActive(item.from, item.to)} hari
+                  </span>
+                ) : (
+                  <span>
+                    Tidak aktif: <span className="font-black">{fmtDate(item.from)}</span>
+                    {' — '}
+                    <span className="font-black">{item.to ? fmtDate(item.to) : '?'}</span>
+                    {' · '}
+                    {calcDaysActive(item.from, item.to)} hari
+                  </span>
+                )}
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
       {/* Profile data chips */}
       <div className="px-7 pb-4 grid grid-cols-2 sm:grid-cols-4 gap-2.5">
         {[
-          { label: 'Berat',       value: `${snapshot.weight} kg` },
-          { label: 'Target/Hari', value: `${snapshot.dailyGramTarget} g` },
+          { label: 'Berat',       value: `${snap.weight} kg` },
+          { label: 'Target/Hari', value: `${snap.dailyGramTarget} g` },
           { label: 'BCS',         value: `${bc} — ${getBodyLabel(bc)}` },
-          { label: 'Aktivitas',   value: ACTIVITY_LABEL[snapshot.activity ?? 'normal'] ?? 'Normal' },
+          { label: 'Aktivitas',   value: ACTIVITY_LABEL[snap.activity ?? 'normal'] ?? 'Normal' },
         ].map((item) => (
           <div key={item.label} className="bg-white rounded-2xl px-4 py-3 border border-gray-100">
             <p className="text-[10px] text-gray-400 font-black uppercase tracking-widest mb-0.5">{item.label}</p>
@@ -202,8 +314,8 @@ function ProfileHistoryCard({
           ) : (
             <div className="space-y-1">
               {stats.dayBreakdown.map(({ dateKey, grams }) => {
-                const pct    = snapshot.dailyGramTarget > 0
-                  ? Math.min(Math.round((grams / snapshot.dailyGramTarget) * 100), 100)
+                const pct     = snap.dailyGramTarget > 0
+                  ? Math.min(Math.round((grams / snap.dailyGramTarget) * 100), 100)
                   : 0;
                 const isToday = dateKey === todayStr;
                 const date    = new Date(dateKey + 'T00:00:00');
@@ -220,8 +332,8 @@ function ProfileHistoryCard({
                     <div className="flex-1">
                       <div className="flex items-center gap-2 mb-1">
                         <span className="text-sm font-black text-amber-500">{grams}g</span>
-                        {snapshot.dailyGramTarget > 0 && (
-                          <span className="text-xs text-gray-400">/ {snapshot.dailyGramTarget}g</span>
+                        {snap.dailyGramTarget > 0 && (
+                          <span className="text-xs text-gray-400">/ {snap.dailyGramTarget}g</span>
                         )}
                       </div>
                       <div className="h-1.5 bg-gray-100 rounded-full overflow-hidden">
@@ -265,6 +377,85 @@ export function CatProfilePage() {
   const [uploadError, setUploadError] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  // Restore profile state
+  const [pendingRestore, setPendingRestore] = useState<CatProfileSnapshot | null>(null);
+  const [restoring, setRestoring] = useState(false);
+  const [restoreError, setRestoreError] = useState<string | null>(null);
+
+  const handleConfirmRestore = async () => {
+    if (!pendingRestore || !cat) return;
+    setRestoring(true);
+    setRestoreError(null);
+
+    // Cegah duplikat: kalau semua field utama identik dengan profil aktif, batalkan
+    const scheduleKey = (s: typeof cat.feedingSchedule) =>
+      (s ?? []).map((x) => `${x.time}:${x.amount}:${x.active}`).sort().join('|');
+    const isIdentical =
+      pendingRestore.weight           === cat.weight &&
+      pendingRestore.dailyGramTarget  === cat.dailyGramTarget &&
+      pendingRestore.bodyCondition    === (cat.bodyCondition as unknown as number) &&
+      pendingRestore.isSterilized     === cat.isSterilized &&
+      (pendingRestore.activity ?? 'normal') === ((cat as any).activity ?? 'normal') &&
+      scheduleKey(pendingRestore.feedingSchedule ?? []) === scheduleKey(cat.feedingSchedule);
+
+    if (isIdentical) {
+      setRestoreError('Profil ini sudah sama dengan profil aktif saat ini, tidak ada perubahan yang perlu diterapkan.');
+      setRestoring(false);
+      return;
+    }
+
+    try {
+      const now = Date.now();
+      // Arsipkan profil aktif ke catProfileHistory — skip jika sudah ada (OnboardingFlow bisa duluan)
+      const histId = `${cat.id}_${cat.profileUpdatedAt ?? now - 1}`;
+      const existing = await getDoc(doc(db, 'catProfileHistory', histId));
+      if (!existing.exists()) {
+        await setDoc(doc(db, 'catProfileHistory', histId), {
+          id:                 histId,
+          catId:              cat.id,
+          ownerId:            cat.ownerId,
+          savedAt:            cat.profileUpdatedAt ?? 0,
+          endedAt:            now,
+          name:               cat.name,
+          gender:             cat.gender,
+          age:                cat.age,
+          weight:             cat.weight,
+          isSterilized:       cat.isSterilized,
+          bodyCondition:      cat.bodyCondition,
+          dailyGramTarget:    cat.dailyGramTarget,
+          dailyCalorieTarget: cat.dailyCalorieTarget,
+          kiloCaloriesPerKg:  cat.kiloCaloriesPerKg,
+          activity:           (cat as any).activity ?? 'normal',
+          feedingSchedule:    cat.feedingSchedule ?? [],
+        });
+      }
+      // Terapkan profil lama ke dokumen kucing aktif
+      await updateDoc(doc(db, 'cats', cat.id), {
+        name:               pendingRestore.name,
+        gender:             pendingRestore.gender,
+        age:                pendingRestore.age,
+        weight:             pendingRestore.weight,
+        isSterilized:       pendingRestore.isSterilized,
+        bodyCondition:      pendingRestore.bodyCondition,
+        dailyGramTarget:    pendingRestore.dailyGramTarget,
+        dailyCalorieTarget: pendingRestore.dailyCalorieTarget,
+        kiloCaloriesPerKg:  pendingRestore.kiloCaloriesPerKg,
+        activity:           pendingRestore.activity ?? 'normal',
+        ...(pendingRestore.feedingSchedule ? { feedingSchedule: pendingRestore.feedingSchedule } : {}),
+        profileUpdatedAt:      now,
+        dailyLimitReachedDate: null,
+        dailyLimitResetDate:   null,
+        dailyAdjustments:      null,
+        updatedAt:             new Date().toISOString(),
+      });
+      setPendingRestore(null);
+    } catch {
+      setRestoreError('Gagal menerapkan profil. Periksa koneksi dan coba lagi.');
+    } finally {
+      setRestoring(false);
+    }
+  };
 
   const handlePhotoChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -380,21 +571,55 @@ export function CatProfilePage() {
     currentSnapshot,
   ];
 
-  // Isi endedAt yang kosong menggunakan savedAt profil berikutnya,
-  // agar log lama tidak merembet ke periode profil setelahnya
+  // Isi endedAt yang kosong menggunakan savedAt profil berikutnya
   const allProfilesResolved = allProfiles.map((snap, idx) => {
     if (snap.endedAt !== undefined) return snap;
     const next = allProfiles[idx + 1];
     return next ? { ...snap, endedAt: next.savedAt } : snap;
   });
 
-  // Untuk display: terbaru di atas, dengan index asli agar nomor urut (#1, #2, …) tetap konsisten
-  const filteredWithIndex = allProfilesResolved
-    .map((snap, idx) => ({ snap, idx }))
-    .filter(({ snap }) =>
-      snap.name.toLowerCase().includes(searchQuery.toLowerCase().trim())
-    )
-    .reverse();
+  // ── Group profil berdasarkan identity key ──────────────────────────────────
+  // Profil dengan data yang sama (nama + berat + target + BCS + aktivitas + jadwal)
+  // digabung jadi satu kartu dengan beberapa periode aktif.
+  const profileGroups: ProfileGroup[] = (() => {
+    const map = new Map<string, ProfileGroup>();
+    allProfilesResolved.forEach((snap, idx) => {
+      const key = profileIdentityKey(snap);
+      if (!map.has(key)) {
+        map.set(key, {
+          key,
+          representative: snap,
+          periods: [],
+          isCurrent: false,
+          originalIndex: idx,
+          restoreSnapshot: snap,
+        });
+      }
+      const g = map.get(key)!;
+      g.periods.push({ savedAt: snap.savedAt, endedAt: snap.endedAt });
+      if (snap.id === 'current') g.isCurrent = true;
+      // representative = snapshot dengan savedAt terbaru (paling baru = paling relevan)
+      if (snap.savedAt > g.representative.savedAt) {
+        g.representative = snap;
+        g.originalIndex = idx;
+        g.restoreSnapshot = snap;
+      }
+    });
+    return Array.from(map.values());
+  })();
+
+  // Sort: current group paling atas, lalu berdasarkan periode paling akhir
+  const sortedGroups = [...profileGroups].sort((a, b) => {
+    if (a.isCurrent !== b.isCurrent) return a.isCurrent ? -1 : 1;
+    const aLast = Math.max(...a.periods.map((p) => p.endedAt ?? Infinity));
+    const bLast = Math.max(...b.periods.map((p) => p.endedAt ?? Infinity));
+    return bLast - aLast;
+  });
+
+  // Filter berdasarkan searchQuery
+  const filteredGroups = sortedGroups.filter((g) =>
+    g.representative.name.toLowerCase().includes(searchQuery.toLowerCase().trim())
+  );
 
   return (
     <div className="space-y-5 md:space-y-10">
@@ -646,7 +871,7 @@ export function CatProfilePage() {
           <div>
             <h3 className="text-2xl font-black text-gray-900">Riwayat Profil Kucing</h3>
             <p className="text-sm text-gray-400 mt-0.5">
-              {allProfilesResolved.length} profil tercatat — terbaru ditampilkan di atas
+              {filteredGroups.length} profil unik · {allProfilesResolved.length} entri tercatat
             </p>
           </div>
           <div className="relative">
@@ -661,9 +886,9 @@ export function CatProfilePage() {
           </div>
         </div>
 
-        {/* Scrollable list — ~3 cards visible, sisanya scroll */}
+        {/* Scrollable list */}
         <div className="max-h-175 overflow-y-auto space-y-4 pr-1 scroll-smooth">
-          {filteredWithIndex.length === 0 ? (
+          {filteredGroups.length === 0 ? (
             <div className="flex flex-col items-center justify-center py-12 bg-white rounded-3xl border border-gray-100">
               <Search className="w-8 h-8 text-gray-300 mb-3" />
               <p className="text-sm font-bold text-gray-500">Tidak ditemukan</p>
@@ -672,18 +897,132 @@ export function CatProfilePage() {
               </p>
             </div>
           ) : (
-            filteredWithIndex.map(({ snap, idx }) => (
+            filteredGroups.map((g) => (
               <ProfileHistoryCard
-                key={snap.id}
-                snapshot={snap}
-                index={idx}
+                key={g.key}
+                group={g}
                 feedingLogs={feedingLogs}
-                isCurrent={snap.id === 'current'}
+                isAdmin={isAdmin}
+                onRestore={!g.isCurrent ? () => setPendingRestore(g.restoreSnapshot) : undefined}
               />
             ))
           )}
         </div>
       </div>
+
+      {/* ── MODAL KONFIRMASI GANTI PROFIL ── */}
+      <AnimatePresence>
+        {pendingRestore && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-4 bg-black/50 backdrop-blur-sm"
+            onClick={() => { if (!restoring) setPendingRestore(null); }}
+          >
+            <motion.div
+              initial={{ opacity: 0, y: 40, scale: 0.97 }}
+              animate={{ opacity: 1, y: 0, scale: 1 }}
+              exit={{ opacity: 0, y: 40, scale: 0.97 }}
+              transition={{ type: 'spring', stiffness: 400, damping: 30 }}
+              onClick={(e) => e.stopPropagation()}
+              className="w-full max-w-md bg-white rounded-4xl p-6 shadow-2xl space-y-5"
+            >
+              {/* Header */}
+              <div className="flex items-start justify-between gap-4">
+                <div className="flex items-start gap-4">
+                  <div className="w-12 h-12 bg-amber-100 rounded-2xl flex items-center justify-center shrink-0">
+                    <RotateCcw className="w-6 h-6 text-amber-600" />
+                  </div>
+                  <div>
+                    <p className="font-black text-lg text-gray-900">Ganti ke Profil Ini?</p>
+                    <p className="text-sm text-gray-500 mt-0.5 leading-relaxed">
+                      Profil aktif saat ini akan digantikan oleh profil berikut:
+                    </p>
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  aria-label="Tutup"
+                  onClick={() => { if (!restoring) setPendingRestore(null); }}
+                  className="w-8 h-8 rounded-xl bg-gray-100 flex items-center justify-center shrink-0 hover:bg-gray-200 transition-colors"
+                >
+                  <X className="w-4 h-4 text-gray-500" />
+                </button>
+              </div>
+
+              {/* Preview profil yang akan dipasang */}
+              <div className="bg-amber-50 border border-amber-100 rounded-2xl p-4 space-y-3">
+                <p className="text-xs font-black uppercase tracking-widest text-amber-500">Profil yang akan diterapkan</p>
+                <p className="text-xl font-black text-gray-900">{pendingRestore.name}</p>
+                <div className="grid grid-cols-2 gap-2">
+                  {[
+                    { label: 'Berat',       value: `${pendingRestore.weight} kg` },
+                    { label: 'Target/Hari', value: `${pendingRestore.dailyGramTarget} g` },
+                    { label: 'BCS',         value: `${pendingRestore.bodyCondition} — ${getBodyLabel(pendingRestore.bodyCondition)}` },
+                    { label: 'Aktivitas',   value: ACTIVITY_LABEL[pendingRestore.activity ?? 'normal'] ?? 'Normal' },
+                  ].map((item) => (
+                    <div key={item.label} className="bg-white rounded-xl px-3 py-2 border border-amber-100">
+                      <p className="text-[10px] text-gray-400 font-black uppercase tracking-widest">{item.label}</p>
+                      <p className="text-sm font-black text-gray-900 mt-0.5">{item.value}</p>
+                    </div>
+                  ))}
+                </div>
+                {pendingRestore.feedingSchedule && pendingRestore.feedingSchedule.length > 0 && (
+                  <div className="bg-white rounded-xl px-3 py-2 border border-amber-100">
+                    <p className="text-[10px] text-gray-400 font-black uppercase tracking-widest mb-1.5">Jadwal Pakan</p>
+                    <div className="flex flex-wrap gap-1.5">
+                      {pendingRestore.feedingSchedule.map((s) => (
+                        <span key={s.time} className="text-xs font-black bg-amber-100 text-amber-700 px-2 py-0.5 rounded-lg">
+                          {s.time} · {s.amount}g
+                        </span>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              {/* Warning */}
+              <div className="flex items-start gap-3 bg-orange-50 border border-orange-100 rounded-2xl px-4 py-3">
+                <AlertTriangle className="w-4 h-4 text-orange-500 shrink-0 mt-0.5" />
+                <p className="text-xs text-orange-700 leading-relaxed">
+                  Profil aktif sekarang akan diarsipkan. Counter feeding hari ini akan
+                  <strong> direset</strong>. Tindakan ini tidak bisa dibatalkan.
+                </p>
+              </div>
+
+              {restoreError && (
+                <div className="flex items-center gap-2 bg-red-50 rounded-xl px-4 py-2.5">
+                  <AlertTriangle className="w-4 h-4 text-red-500 shrink-0" />
+                  <p className="text-sm text-red-600 font-semibold">{restoreError}</p>
+                </div>
+              )}
+
+              {/* Buttons */}
+              <div className="flex gap-3">
+                <button
+                  type="button"
+                  onClick={() => { setPendingRestore(null); setRestoreError(null); }}
+                  disabled={restoring}
+                  className="flex-1 py-3.5 rounded-2xl border-2 border-gray-200 text-sm font-black text-gray-600 hover:bg-gray-50 transition-colors disabled:opacity-50"
+                >
+                  Batal
+                </button>
+                <button
+                  type="button"
+                  onClick={handleConfirmRestore}
+                  disabled={restoring}
+                  className="flex-1 py-3.5 rounded-2xl bg-amber-500 hover:bg-amber-400 text-white text-sm font-black transition-colors disabled:opacity-60 flex items-center justify-center gap-2 shadow-amber-200 shadow-md"
+                >
+                  {restoring
+                    ? <><Loader2 className="w-4 h-4 animate-spin" /> Menerapkan...</>
+                    : <><RotateCcw className="w-4 h-4" /> Ya, Terapkan Profil</>}
+                </button>
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
 
     </div>
   );

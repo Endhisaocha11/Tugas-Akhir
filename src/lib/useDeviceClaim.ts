@@ -1,4 +1,4 @@
-import { doc, runTransaction, serverTimestamp } from 'firebase/firestore';
+import { doc, getDoc, runTransaction, serverTimestamp, collection, query, where, getDocs, writeBatch } from 'firebase/firestore';
 import { db } from './firebase';
 
 /**
@@ -73,4 +73,46 @@ export async function releaseDevice(deviceId: string, userId: string): Promise<v
       claimedDeviceId: null,
     });
   });
+}
+
+/**
+ * Melepas SEMUA device dalam satu batch.
+ * deviceIds = semua ID yang diketahui (dari RTDB maupun Firestore).
+ * Setiap device yang ada di Firestore di-reset claim-nya;
+ * device yang belum punya dokumen Firestore di-skip (tidak perlu diapa-apakan).
+ * User yang bersangkutan juga di-reset claimedDeviceId-nya.
+ */
+export async function releaseAllDevices(userId: string, deviceIds: string[]): Promise<number> {
+  if (deviceIds.length === 0) return 0;
+
+  // Baca semua dokumen Firestore sekaligus untuk tahu mana yang exist
+  const snaps = await Promise.all(
+    deviceIds.map((id) => getDoc(doc(db, 'devices', id)))
+  );
+
+  const batch = writeBatch(db);
+  let count = 0;
+
+  snaps.forEach((snap) => {
+    if (!snap.exists()) return;
+    batch.update(snap.ref, {
+      isClaimed:   false,
+      claimedBy:   null,
+      claimedAt:   null,
+      linkedCatId: null,
+    });
+    count++;
+  });
+
+  // Reset semua user yang punya claimedDeviceId salah satu dari list ini
+  const userSnaps = await getDocs(
+    query(collection(db, 'users'), where('claimedDeviceId', 'in', deviceIds.slice(0, 10)))
+  );
+  userSnaps.forEach((u) => batch.update(u.ref, { claimedDeviceId: null }));
+
+  // Pastikan user saat ini selalu di-reset (walau tidak ada di query)
+  batch.update(doc(db, 'users', userId), { claimedDeviceId: null });
+
+  await batch.commit();
+  return count;
 }
