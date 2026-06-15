@@ -729,9 +729,9 @@ export default function OnboardingFlow({
 
                     {/* Nama */}
                     <div className="col-span-2">
-                      <label className="block text-sm font-black text-gray-500 mb-3 uppercase tracking-wider">
+                      <p className="block text-sm font-black text-gray-500 mb-3 uppercase tracking-wider">
                         Nama Kucing
-                      </label>
+                      </p>
 
                       <input
                         type="text"
@@ -834,9 +834,9 @@ export default function OnboardingFlow({
                   <div className="mt-12">
 
                     <div className="flex items-center justify-between mb-5">
-                      <label className="text-sm font-black uppercase tracking-wider text-gray-500">
+                      <p className="text-sm font-black uppercase tracking-wider text-gray-500">
                         Usia Kucing
-                      </label>
+                      </p>
 
                       <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-2xl bg-amber-50 border border-amber-200">
                         <span>📅</span>
@@ -931,9 +931,9 @@ export default function OnboardingFlow({
 
                     <div className="flex items-center justify-between mb-5">
 
-                      <label className="text-sm font-black uppercase tracking-wider text-gray-500">
+                      <p className="text-sm font-black uppercase tracking-wider text-gray-500">
                         Berat Badan
-                      </label>
+                      </p>
 
                       <div className="flex items-end gap-2">
                         <input
@@ -1250,9 +1250,9 @@ export default function OnboardingFlow({
                 {/* FOOD ENERGY */}
                 <div className="mt-10">
 
-                  <label className="block text-sm font-black uppercase tracking-wider text-gray-500 mb-4">
+                  <p className="block text-sm font-black uppercase tracking-wider text-gray-500 mb-4">
                     Energi Makanan Kemasan (kcal/kg)
-                  </label>
+                  </p>
 
                   <input
                     aria-label="Masukkan energi makanan kucingmu yang ada dikemasan"

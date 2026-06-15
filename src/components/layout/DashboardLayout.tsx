@@ -60,7 +60,10 @@ export function DashboardLayout({
   userRole = UserRole.USER,
 }: DashboardLayoutProps) {
   const { user } = useAuth();
-  const { cat, device } = useCatData();
+  const { cat, device, feedingLogs } = useCatData();
+  const hasUnread = feedingLogs.some(
+    (l) => l.timestamp > Number(localStorage.getItem('notif_last_read') ?? '0')
+  );
   const catPhotoUrl = (cat as any)?.photoUrl as string | undefined;
   const isOnline = device?.isOnline === true;
 
@@ -92,6 +95,8 @@ export function DashboardLayout({
   };
 
   const handleBackToMonitoring = () => {
+    // Flag sessionStorage agar auto-restore di App.tsx tidak aktif kembali
+    sessionStorage.setItem('skipAutoRestore', '1');
     localStorage.removeItem('appMode');
     localStorage.removeItem('selectedAdminId');
     localStorage.removeItem('selectedAdminEmail');
@@ -288,7 +293,9 @@ export function DashboardLayout({
               >
                 <Bell className="w-4 h-4" />
               </button>
-              <span className="absolute top-0.5 right-0.5 w-2 h-2 bg-red-500 border border-white rounded-full pointer-events-none" />
+              {hasUnread && (
+                <span className="absolute top-0.5 right-0.5 w-2 h-2 bg-red-500 border border-white rounded-full pointer-events-none" />
+              )}
             </div>
 
             {/* DEVICE STATUS — admin only */}

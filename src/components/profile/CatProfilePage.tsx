@@ -532,15 +532,32 @@ export function CatProfilePage() {
     { label: 'Aktivitas',     value: ACTIVITY_LABEL[activity ?? 'normal'] ?? 'Normal', icon: Activity, color: 'text-blue-400' },
   ];
 
-  const todayStart = new Date(); todayStart.setHours(0, 0, 0, 0);
-  const todayStartMs = todayStart.getTime();
-  const profileUpdatedTodayMs =
-    cat.profileUpdatedAt && cat.profileUpdatedAt >= todayStartMs
-      ? cat.profileUpdatedAt
-      : todayStartMs;
+  // ── Konsumsi hari ini — logika identik dengan FeedingControl ────────────────
+  const _todayStart = new Date(); _todayStart.setHours(0, 0, 0, 0);
+  const _todayStartMs = _todayStart.getTime();
+  const todayCountFrom = Math.max(_todayStartMs, cat.profileUpdatedAt ?? 0);
+
+  const _schedule = cat.feedingSchedule ?? [];
+  const _smartFeedEnabled = (cat as any).smartFeedEnabled !== false;
+  const _nowD = new Date();
+  const _currentTimeStr = `${String(_nowD.getHours()).padStart(2, '0')}:${String(_nowD.getMinutes()).padStart(2, '0')}`;
+
+  // Slot yang sudah punya log aktual hari ini
+  const _deliveredSlots = new Set<string>();
+  feedingLogs
+    .filter((l) => l.notes === 'scheduled' && l.catId === cat.id && l.timestamp >= todayCountFrom)
+    .forEach((l) => {
+      const d = new Date(l.timestamp);
+      const logMin = d.getHours() * 60 + d.getMinutes();
+      _schedule.forEach((sl) => {
+        const [slH, slM] = (sl.time as string).split(':').map(Number);
+        if (Math.abs(logMin - (slH * 60 + slM)) <= 15) _deliveredSlots.add(sl.time as string);
+      });
+    });
+
   const todayTotal = Math.round(
     feedingLogs
-      .filter((l) => l.timestamp >= profileUpdatedTodayMs)
+      .filter((l) => l.catId === cat.id && l.timestamp >= todayCountFrom)
       .reduce((s, l) => s + (l.amountDispensed ?? 0), 0)
   );
   const dailyTarget = cat.dailyGramTarget ?? 0;
@@ -551,7 +568,7 @@ export function CatProfilePage() {
     id: 'current',
     catId: cat.id,
     ownerId: cat.ownerId,
-    savedAt: cat.profileUpdatedAt ?? todayStartMs,
+    savedAt: cat.profileUpdatedAt ?? _todayStartMs,
     endedAt: undefined,
     name: cat.name,
     gender: cat.gender,
@@ -710,7 +727,7 @@ export function CatProfilePage() {
                 initial={{ width: 0 }}
                 animate={{ width: `${todayPct}%` }}
                 transition={{ duration: 0.8 }}
-                className={cn('h-full rounded-full', todayPct >= 100 ? 'bg-red-400' : 'bg-amber-400')}
+                className={cn('h-full rounded-full', todayTotal > dailyTarget ? 'bg-red-400' : todayPct >= 100 ? 'bg-green-400' : 'bg-amber-400')}
               />
             </div>
             <p className="text-sm font-black text-amber-500">{todayPct}%</p>

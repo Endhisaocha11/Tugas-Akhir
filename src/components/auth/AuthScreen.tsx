@@ -4,7 +4,23 @@ import { createUserWithEmailAndPassword, signInWithEmailAndPassword, sendPasswor
 import { doc, setDoc, getDoc } from 'firebase/firestore';
 import { auth, db } from '../../lib/firebase';
 import { UserRole } from '../../types';
-import { Cat, ArrowRight, Mail, Lock, Eye, EyeOff, ShieldCheck, User, Zap } from 'lucide-react';
+import { Cat, ArrowRight, Mail, Lock, Eye, EyeOff, ShieldCheck, User, Zap, AlertTriangle } from 'lucide-react';
+
+const ALLOWED_DOMAINS = ['gmail.com', 'yahoo.com', 'outlook.com', 'hotmail.com', 'icloud.com', 'ugm.ac.id'];
+
+function getEmailDomain(email: string): string {
+  const parts = email.trim().split('@');
+  return parts.length === 2 ? parts[1].toLowerCase() : '';
+}
+
+function validateEmailDomain(email: string): string | null {
+  const domain = getEmailDomain(email);
+  if (!domain) return null;
+  if (!ALLOWED_DOMAINS.includes(domain)) {
+    return `Domain "@${domain}" tidak diizinkan. Gunakan: ${ALLOWED_DOMAINS.map((d) => `@${d}`).join(', ')}.`;
+  }
+  return null;
+}
 
 export function AuthScreen() {
   const [isLogin, setIsLogin] = useState(true);
@@ -21,13 +37,20 @@ export function AuthScreen() {
   const [resetSent, setResetSent] = useState(false);
   const [resetLoading, setResetLoading] = useState(false);
   const [resetError, setResetError] = useState('');
+  const [emailDomainError, setEmailDomainError] = useState('');
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    setLoading(true);
     setError('');
     setShowRegisterHint(false);
 
+    const domainErr = validateEmailDomain(email);
+    if (domainErr) {
+      setEmailDomainError(domainErr);
+      return;
+    }
+
+    setLoading(true);
     try {
       if (isLogin) {
         const cred = await signInWithEmailAndPassword(auth, email, password);
@@ -72,8 +95,13 @@ export function AuthScreen() {
 
   const handleResetPassword = async (e: React.FormEvent) => {
     e.preventDefault();
-    setResetLoading(true);
     setResetError('');
+    const domainErr = validateEmailDomain(resetEmail);
+    if (domainErr) {
+      setResetError(domainErr);
+      return;
+    }
+    setResetLoading(true);
     try {
       await sendPasswordResetEmail(auth, resetEmail);
       setResetSent(true);
@@ -172,11 +200,12 @@ export function AuthScreen() {
               ) : (
                 <form onSubmit={handleResetPassword} className="space-y-5">
                   <div className="space-y-2">
-                    <label htmlFor="reset-email" className="text-sm font-bold text-gray-600">Email</label>
+                    <label htmlFor="forgot-email" className="text-sm font-bold text-gray-600">Email</label>
                     <div className="relative">
                       <Mail className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-300 w-5 h-5" />
                       <input
-                        id="reset-email"
+                        id="forgot-email"
+                        name="forgot-email"
                         type="email"
                         value={resetEmail}
                         onChange={(e) => setResetEmail(e.target.value)}
@@ -237,23 +266,54 @@ export function AuthScreen() {
 
               <form onSubmit={handleSubmit} className="space-y-5">
                 <div className="space-y-2">
-                  <label htmlFor="email" className="text-sm font-bold text-gray-600">Email</label>
+                  <label htmlFor="login-email" className="text-sm font-bold text-gray-600">Email</label>
                   <div className="relative">
                     <Mail className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-300 w-5 h-5" />
                     <input
-                      id="email"
+                      id="login-email"
+                      name="login-email"
                       type="email"
                       value={email}
-                      onChange={(e) => setEmail(e.target.value)}
+                      onChange={(e) => {
+                        setEmail(e.target.value);
+                        const domain = getEmailDomain(e.target.value);
+                        if (domain && !ALLOWED_DOMAINS.includes(domain)) {
+                          setEmailDomainError(`Domain "@${domain}" tidak diizinkan.`);
+                        } else {
+                          setEmailDomainError('');
+                        }
+                      }}
                       placeholder="Masukkan email"
-                      className="w-full pl-12 pr-4 py-4 rounded-2xl bg-gray-50 border border-transparent focus:border-amber-400 outline-none"
+                      className={`w-full pl-12 pr-4 py-4 rounded-2xl bg-gray-50 border outline-none transition-colors ${
+                        emailDomainError ? 'border-red-300 focus:border-red-400' : 'border-transparent focus:border-amber-400'
+                      }`}
                     />
                   </div>
+
+                  {/* Domain error */}
+                  <AnimatePresence>
+                    {emailDomainError && (
+                      <motion.div
+                        initial={{ opacity: 0, y: -4 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        exit={{ opacity: 0, y: -4 }}
+                        className="flex items-start gap-2 bg-red-50 border border-red-100 rounded-xl px-3 py-2.5"
+                      >
+                        <AlertTriangle className="w-4 h-4 text-red-500 shrink-0 mt-0.5" />
+                        <div>
+                          <p className="text-xs font-bold text-red-600">Domain tidak diizinkan</p>
+                          <p className="text-[11px] text-red-500 mt-0.5 leading-relaxed">
+                            Hanya diperbolehkan: {ALLOWED_DOMAINS.map((d) => `@${d}`).join(', ')}.
+                          </p>
+                        </div>
+                      </motion.div>
+                    )}
+                  </AnimatePresence>
                 </div>
 
                 <div className="space-y-2">
                   <div className="flex items-center justify-between">
-                    <label htmlFor="password" className="text-sm font-bold text-gray-600">Password</label>
+                    <label htmlFor="login-password" className="text-sm font-bold text-gray-600">Password</label>
                     {isLogin && (
                       <button
                         type="button"
@@ -267,7 +327,8 @@ export function AuthScreen() {
                   <div className="relative">
                     <Lock className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-300 w-5 h-5" />
                     <input
-                      id="password"
+                      id="login-password"
+                      name="login-password"
                       type={showPassword ? 'text' : 'password'}
                       value={password}
                       onChange={(e) => setPassword(e.target.value)}
@@ -418,12 +479,6 @@ export function AuthScreen() {
                 <button
                   type="button"
                   onClick={() => {
-                    if (!isAdmin) {
-                      localStorage.removeItem('appMode');
-                      localStorage.removeItem('selectedAdminId');
-                      localStorage.removeItem('selectedAdminEmail');
-                      localStorage.removeItem('catProfile');
-                    }
                     window.location.reload();
                   }}
                   className={`mt-6 w-full py-5 rounded-2xl text-white font-black transition-all ${

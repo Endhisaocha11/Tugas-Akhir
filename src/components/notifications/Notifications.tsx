@@ -1,116 +1,243 @@
-import type { ElementType } from 'react';
+import { useEffect, useState } from 'react';
 import {
-  Bell, CheckCircle, AlertTriangle, XCircle, Info,
-  Wifi, WifiOff, Database, Utensils, RefreshCw, Zap, ShieldAlert,
+  Bell, Utensils, Zap,
+  AlertTriangle, CheckCircle2, XCircle, Clock, RefreshCw,
 } from 'lucide-react';
 import { useCatData } from '../../lib/useCatData';
+import { useAuth } from '../../lib/AuthContext';
 import { cn } from '../../lib/utils';
-
-// ── Types ─────────────────────────────────────────────────────────────────────
-
-type NotifType   = 'success' | 'warning' | 'error' | 'info';
-type NotifSource = 'device' | 'health' | 'manual' | 'auto' | 'overfeeding' | 'profile';
-
-interface NotifItem {
-  id: string;
-  type: NotifType;
-  source: NotifSource;
-  title: string;
-  body: string;
-  time: string;
-  priority: number;
-  route?: string;
-}
-
-// ── Config ────────────────────────────────────────────────────────────────────
-
-const TYPE_CONFIG: Record<NotifType, {
-  icon: ElementType;
-  iconColor: string;
-  iconBg: string;
-  border: string;
-}> = {
-  success: { icon: CheckCircle,   iconColor: 'text-green-500',  iconBg: 'bg-green-50',  border: 'border-green-100'  },
-  warning: { icon: AlertTriangle, iconColor: 'text-yellow-500', iconBg: 'bg-yellow-50', border: 'border-yellow-100' },
-  error:   { icon: XCircle,       iconColor: 'text-red-500',    iconBg: 'bg-red-50',    border: 'border-red-100'    },
-  info:    { icon: Info,          iconColor: 'text-blue-500',   iconBg: 'bg-blue-50',   border: 'border-blue-100'   },
-};
-
-const SOURCE_CONFIG: Record<NotifSource, { label: string; bg: string; text: string; icon: ElementType }> = {
-  device:      { label: 'Perangkat',   bg: 'bg-blue-100',   text: 'text-blue-700',   icon: Wifi         },
-  health:      { label: 'Kesehatan',   bg: 'bg-purple-100', text: 'text-purple-700', icon: ShieldAlert  },
-  manual:      { label: 'Manual',      bg: 'bg-green-100',  text: 'text-green-700',  icon: Utensils     },
-  auto:        { label: 'Otomatis',    bg: 'bg-amber-100',  text: 'text-amber-700',  icon: Zap          },
-  overfeeding: { label: 'Overfeeding', bg: 'bg-red-100',    text: 'text-red-700',    icon: AlertTriangle},
-  profile:     { label: 'Profil',      bg: 'bg-teal-100',   text: 'text-teal-700',   icon: RefreshCw    },
-};
-
-const SECTION_ORDER: NotifSource[] = ['device', 'health', 'overfeeding', 'profile', 'auto', 'manual'];
-
-const SECTION_LABELS: Record<NotifSource, string> = {
-  device:      'Status Perangkat',
-  health:      'Kesehatan Kucing',
-  overfeeding: 'Peringatan Overfeeding',
-  profile:     'Pembaruan Profil',
-  auto:        'Feeding Otomatis',
-  manual:      'Feeding Manual',
-};
-
-const TWENTY_FOUR_HOURS = 86_400_000;
+import type { FeedingLog } from '../../types';
+import { UserRole } from '../../types';
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
-function formatTime(ts: number): string {
+function formatRelative(ts: number): string {
   const diff = Date.now() - ts;
-  if (diff < 60_000)        return 'Baru saja';
-  if (diff < 3_600_000)     return `${Math.floor(diff / 60_000)} menit lalu`;
-  if (diff < TWENTY_FOUR_HOURS) return `${Math.floor(diff / 3_600_000)} jam lalu`;
-  return new Date(ts).toLocaleDateString('id-ID', {
-    day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit',
-  });
+  if (diff < 60_000)      return 'Baru saja';
+  if (diff < 3_600_000)   return `${Math.floor(diff / 60_000)} mnt lalu`;
+  if (diff < 7_200_000)   return '1 jam lalu';
+  if (diff < 86_400_000)  return `${Math.floor(diff / 3_600_000)} jam lalu`;
+  return new Date(ts).toLocaleDateString('id-ID', { day: '2-digit', month: 'short' });
 }
 
-function getTriggerType(notes?: string): 'manual' | 'auto' {
-  if (!notes) return 'auto';
-  const n = notes.toLowerCase();
-  if (n.includes('manual')) return 'manual';
-  return 'auto';
+function formatClock(ts: number): string {
+  return new Date(ts).toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' });
+}
+
+function getDateLabel(ts: number): string {
+  const d     = new Date(ts);
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  const yest = new Date(today.getTime() - 86_400_000);
+  d.setHours(0, 0, 0, 0);
+  if (d.getTime() === today.getTime()) return 'Hari Ini';
+  if (d.getTime() === yest.getTime())  return 'Kemarin';
+  return new Date(ts).toLocaleDateString('id-ID', { weekday: 'long', day: 'numeric', month: 'long' });
+}
+
+const isManual    = (n?: string) => n === 'manual';
+const isScheduled = (n?: string) => n === 'scheduled' || !n;
+
+// ── Types ─────────────────────────────────────────────────────────────────────
+
+interface DeviceAlert {
+  id: string;
+  level: 'error' | 'warning';
+  title: string;
+  body: string;
+}
+
+interface LogGroup {
+  label: string;
+  logs: FeedingLog[];
 }
 
 // ── Sub-components ─────────────────────────────────────────────────────────────
 
-function SummaryCard({
-  icon: Icon,
-  iconBg,
-  iconColor,
-  label,
-  value,
-  valueColor,
+function AlertBanner({
+  alert,
+  onClick,
+  isAdmin,
 }: {
-  icon: ElementType;
-  iconBg: string;
-  iconColor: string;
-  label: string;
-  value: string;
-  valueColor: string;
+  alert: DeviceAlert;
+  onClick?: () => void;
+  isAdmin: boolean;
 }) {
+  const isErr = alert.level === 'error';
+  const baseClass = cn(
+    'w-full text-left rounded-2xl p-4 flex items-center gap-3 border transition-all',
+    isErr
+      ? 'bg-red-50 border-red-200 border-l-4 border-l-red-500'
+      : 'bg-amber-50 border-amber-200 border-l-4 border-l-amber-400',
+  );
+
+  const inner = (
+    <>
+      {isErr
+        ? <XCircle      className="w-5 h-5 text-red-500 shrink-0" />
+        : <AlertTriangle className="w-5 h-5 text-amber-500 shrink-0" />}
+      <div className="flex-1 min-w-0">
+        <p className={cn('font-black text-sm', isErr ? 'text-red-700' : 'text-amber-700')}>
+          {alert.title}
+        </p>
+        <p className={cn('text-xs mt-0.5 leading-relaxed', isErr ? 'text-red-500' : 'text-amber-600')}>
+          {alert.body}
+        </p>
+      </div>
+      {isAdmin && <span className="text-xs font-bold text-gray-400 shrink-0">Cek →</span>}
+    </>
+  );
+
+  if (!isAdmin) {
+    return <div className={baseClass}>{inner}</div>;
+  }
+
   return (
-    <div className="bg-white rounded-2xl border border-gray-100 p-3 sm:p-4 flex items-center gap-2 sm:gap-3">
-      <div className={cn('w-8 h-8 sm:w-10 sm:h-10 rounded-xl flex items-center justify-center shrink-0', iconBg)}>
-        <Icon className={cn('w-4 h-4 sm:w-5 sm:h-5', iconColor)} />
-      </div>
-      <div className="min-w-0">
-        <p className="text-[10px] sm:text-xs text-gray-400 font-medium truncate">{label}</p>
-        <p className={cn('font-black text-xs sm:text-sm truncate', valueColor)}>{value}</p>
-      </div>
-    </div>
+    <button
+      type="button"
+      onClick={onClick}
+      className={cn(baseClass, 'hover:shadow-md active:scale-[0.99]')}
+    >
+      {inner}
+    </button>
   );
 }
 
-// ── Main Component ─────────────────────────────────────────────────────────────
+function FeedCard({
+  log,
+  catName,
+  isNew,
+  isAdmin,
+  onClick,
+}: {
+  log: FeedingLog;
+  catName?: string;
+  isNew: boolean;
+  isAdmin: boolean;
+  onClick?: () => void;
+}) {
+  const manual    = isManual(log.notes);
+  const ok        = log.status === 'success';
+  const warn      = log.status === 'warning';
+
+  const StatusIcon = ok ? CheckCircle2 : warn ? AlertTriangle : XCircle;
+  const statusColor = ok ? 'text-green-500' : warn ? 'text-amber-500' : 'text-red-500';
+
+  const TriggerIcon  = manual ? Utensils : Zap;
+  const triggerColor = manual ? 'text-blue-500' : 'text-amber-500';
+  const triggerBg    = manual ? 'bg-blue-50'    : 'bg-amber-50';
+  const triggerLabel = manual ? 'Manual'         : 'Otomatis';
+  const triggerTxt   = manual ? 'text-blue-600'  : 'text-amber-600';
+  const triggerBadge = manual ? 'bg-blue-100'    : 'bg-amber-100';
+
+  const cardBg = isNew
+    ? (ok ? 'bg-green-50' : warn ? 'bg-amber-50/60' : 'bg-red-50')
+    : 'bg-white';
+  const cardBorder = ok
+    ? 'border-green-100' : warn ? 'border-amber-100' : 'border-red-100';
+
+  const title = ok
+    ? (manual ? 'Feeding Manual Berhasil'    : 'Feeding Otomatis Berhasil')
+    : warn
+    ? (manual ? 'Feeding Manual Kurang Akurat' : 'Feeding Otomatis Kurang Akurat')
+    : (manual ? 'Feeding Manual Gagal'       : 'Feeding Otomatis Gagal');
+
+  const body = ok
+    ? `${log.amountDispensed}g diberikan — sesuai target ${log.amountRequested}g`
+    : warn
+    ? `${log.amountDispensed}g diberikan — target ${log.amountRequested}g (toleransi terlampaui)`
+    : `Target ${log.amountRequested}g tidak tercapai — periksa stok & servo`;
+
+  const cardClass = cn(
+    'w-full text-left rounded-2xl border p-4 flex items-start gap-3 transition-all',
+    cardBg, cardBorder,
+    isAdmin && 'hover:shadow-md active:scale-[0.99]',
+  );
+
+  const cardInner = (
+    <>
+      {/* Trigger icon */}
+      <div className={cn('w-9 h-9 rounded-xl flex items-center justify-center shrink-0 mt-0.5', triggerBg)}>
+        <TriggerIcon className={cn('w-4 h-4', triggerColor)} />
+      </div>
+
+      {/* Content */}
+      <div className="flex-1 min-w-0">
+        {/* App bar */}
+        <div className="flex items-center gap-1 mb-1 flex-wrap">
+          <span className="text-[10px] font-black text-gray-400 uppercase tracking-wider">PawfectCare</span>
+          <span className="text-gray-300 text-[10px]">·</span>
+          <span className="text-[10px] text-gray-400">{formatRelative(log.timestamp)}</span>
+          {isNew && (
+            <span className="ml-auto shrink-0 px-1.5 py-0.5 rounded-full bg-amber-500 text-white text-[9px] font-black tracking-wide">
+              BARU
+            </span>
+          )}
+        </div>
+
+        {/* Title */}
+        <div className="flex items-center gap-1.5">
+          <StatusIcon className={cn('w-3.5 h-3.5 shrink-0', statusColor)} />
+          <p className="font-black text-sm text-gray-900 leading-snug">{title}</p>
+        </div>
+
+        {/* Body */}
+        <p className="text-xs text-gray-500 mt-1 leading-relaxed">{body}</p>
+
+        {/* Footer chips */}
+        <div className="flex items-center gap-1.5 mt-2 flex-wrap">
+          {catName && (
+            <span className="inline-flex items-center gap-1 text-[10px] font-bold text-gray-500 bg-gray-100 px-2 py-0.5 rounded-full">
+              🐱 {catName}
+            </span>
+          )}
+          <span className="inline-flex items-center gap-1 text-[10px] font-bold text-gray-500 bg-gray-100 px-2 py-0.5 rounded-full">
+            <Clock className="w-2.5 h-2.5" />
+            {formatClock(log.timestamp)}
+          </span>
+          <span className={cn(
+            'inline-flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded-full',
+            triggerBadge, triggerTxt,
+          )}>
+            <TriggerIcon className="w-2.5 h-2.5" />
+            {triggerLabel}
+          </span>
+        </div>
+      </div>
+    </>
+  );
+
+  if (!isAdmin) {
+    return <div className={cardClass}>{cardInner}</div>;
+  }
+
+  return (
+    <button type="button" onClick={onClick} className={cardClass}>
+      {cardInner}
+    </button>
+  );
+}
+
+// ── Main ──────────────────────────────────────────────────────────────────────
 
 export function Notifications({ onNavigate }: { onNavigate?: (tab: string) => void }) {
   const { cat, device, feedingLogs, loading } = useCatData();
+  const { profile } = useAuth();
+  const isAdmin = profile?.role === UserRole.SUPER_ADMIN;
+
+  // Tick every 30 s so relative timestamps stay accurate
+  const [, setTick] = useState(0);
+  useEffect(() => {
+    const id = setInterval(() => setTick((n) => n + 1), 30_000);
+    return () => clearInterval(id);
+  }, []);
+
+  // Unread tracking: capture previous visit timestamp, then update to now
+  const [lastReadAt] = useState<number>(() => {
+    const prev = Number(localStorage.getItem('notif_last_read') ?? '0');
+    localStorage.setItem('notif_last_read', String(Date.now()));
+    return prev;
+  });
 
   if (loading) {
     return (
@@ -120,319 +247,167 @@ export function Notifications({ onNavigate }: { onNavigate?: (tab: string) => vo
     );
   }
 
-  const now = Date.now();
-  const profileUpdatedAt = cat?.profileUpdatedAt ?? 0;
+  const isNew = (ts: number) => ts > lastReadAt;
 
-  const notifs: NotifItem[] = [];
-
-  // ── 1. Device ─────────────────────────────────────────────────────────────
+  // ── Device alerts ─────────────────────────────────────────────────────────
+  const alerts: DeviceAlert[] = [];
   if (device) {
-    if (!device.isOnline) {
-      notifs.push({
-        id: 'dev-offline', type: 'error', source: 'device', priority: 0,
-        title: 'Perangkat Offline',
-        body: 'PawfectCare tidak terhubung ke internet. Periksa koneksi Wi-Fi perangkat.',
-        time: device.lastPulse ? formatTime(device.lastPulse) : '—',
-        route: 'settings',
-      });
-    }
-
-    if (device.foodStockLevel < 20) {
-      notifs.push({
-        id: 'low-stock', type: 'warning', source: 'device', priority: 1,
-        title: 'Stok Makanan Hampir Habis',
-        body: `Sisa stok pakan ${device.foodStockLevel}%. Segera isi ulang sebelum kehabisan.`,
-        time: 'Sekarang',
-        route: 'settings',
-      });
-    }
-
     if (device.servoStatus === 'jammed') {
-      notifs.push({
-        id: 'servo-jammed', type: 'error', source: 'device', priority: 0,
+      alerts.push({
+        id: 'jammed', level: 'error',
         title: 'Servo Macet',
-        body: 'Mekanisme dispenser mengalami hambatan. Periksa kondisi fisik dan bersihkan sumbatan.',
-        time: 'Sekarang',
-        route: 'settings',
+        body: 'Mekanisme dispenser terhambat — periksa fisik perangkat.',
       });
     }
-
-    if (device.isOnline && device.servoStatus === 'active') {
-      notifs.push({
-        id: 'dev-active', type: 'info', source: 'device', priority: 2,
-        title: 'Perangkat Sedang Mendispens',
-        body: `PawfectCare sedang mengeluarkan pakan. Berat mangkok: ${device.currentWeightOnScale}g.`,
-        time: 'Sekarang',
-        route: 'feeding-control',
+    if (!device.isOnline) {
+      alerts.push({
+        id: 'offline', level: 'error',
+        title: 'Perangkat Offline',
+        body: 'Feeder tidak terhubung ke internet — periksa koneksi Wi-Fi.',
       });
     }
-
-    if (device.isOnline && device.servoStatus === 'idle' && device.foodStockLevel >= 20) {
-      notifs.push({
-        id: 'dev-ready', type: 'success', source: 'device', priority: 3,
-        title: 'Perangkat Siap Digunakan',
-        body: `PawfectCare aktif dan siaga. Stok ${device.foodStockLevel}%. Servo normal.`,
-        time: device.lastPulse ? formatTime(device.lastPulse) : 'Sekarang',
-        route: 'settings',
-      });
-    }
-  } else {
-    notifs.push({
-      id: 'no-device', type: 'info', source: 'device', priority: 2,
-      title: 'Perangkat Belum Terhubung',
-      body: 'Belum ada data perangkat. Admin perlu menghubungkan PawfectCare terlebih dahulu.',
-      time: 'Sekarang',
-      route: 'settings',
-    });
-  }
-
-  // ── 2. Cat health ─────────────────────────────────────────────────────────
-  if (cat) {
-    const bc = cat.bodyCondition as unknown as number;
-
-    if (bc >= 4) {
-      notifs.push({
-        id: 'cat-overweight', type: 'warning', source: 'health', priority: 1,
-        title: `${cat.name} — Kelebihan Berat Badan`,
-        body: `BCS ${bc}/5. Konsultasikan ke dokter hewan untuk program diet yang tepat.`,
-        time: 'Data terkini',
-        route: 'cat-profile',
-      });
-    } else if (bc <= 2) {
-      notifs.push({
-        id: 'cat-underweight', type: 'warning', source: 'health', priority: 1,
-        title: `${cat.name} — Kekurangan Berat Badan`,
-        body: `BCS ${bc}/5. Segera konsultasikan ke dokter hewan.`,
-        time: 'Data terkini',
-        route: 'cat-profile',
-      });
-    } else {
-      notifs.push({
-        id: 'cat-healthy', type: 'success', source: 'health', priority: 4,
-        title: `${cat.name} — Kondisi Tubuh Normal`,
-        body: `BCS ${bc}/5. Berat badan dalam rentang ideal. Tetap pantau secara berkala.`,
-        time: 'Data terkini',
-        route: 'cat-profile',
-      });
-    }
-
-    // Profil diperbarui: hanya tampilkan dalam 24 jam terakhir
-    if (profileUpdatedAt && now - profileUpdatedAt < TWENTY_FOUR_HOURS) {
-      notifs.push({
-        id: 'profile-updated', type: 'info', source: 'profile', priority: 2,
-        title: 'Profil Kucing Diperbarui',
-        body: `Profil ${cat.name} diperbarui ${formatTime(profileUpdatedAt)}. Target feeding baru: ${cat.dailyGramTarget}g/hari.`,
-        time: formatTime(profileUpdatedAt),
-        route: 'cat-profile',
+    if (device.foodStockLevel < 20) {
+      alerts.push({
+        id: 'stock', level: 'warning',
+        title: 'Stok Pakan Hampir Habis',
+        body: `Tersisa ${device.foodStockLevel}% — segera isi ulang agar jadwal feeding tidak terlewat.`,
       });
     }
   }
 
-  // ── 3. Feeding logs: hanya profil saat ini + hari ini (sejak tengah malam lokal) ─
-  const todayStartMs = (() => { const d = new Date(); d.setHours(0, 0, 0, 0); return d.getTime(); })();
-  const recentLogs = feedingLogs.filter(
-    (log) => log.timestamp >= profileUpdatedAt && log.timestamp >= todayStartMs
-  );
+  // ── Feeding logs (7 hari terakhir, terbaru dulu) ─────────────────────────
+  const sevenDaysAgo = Date.now() - 7 * 86_400_000;
+  const sortedLogs = [...feedingLogs]
+    .filter((l) => l.timestamp >= sevenDaysAgo)
+    .sort((a, b) => b.timestamp - a.timestamp);
 
-  recentLogs.slice(0, 20).forEach((log) => {
-    const trigger  = getTriggerType(log.notes);
-    const isOverfed = (log.amountDispensed ?? 0) > log.amountRequested * 1.1;
+  // Group by date label
+  const groups: LogGroup[] = [];
+  for (const log of sortedLogs) {
+    const label = getDateLabel(log.timestamp);
+    const last  = groups[groups.length - 1];
+    if (last?.label === label) last.logs.push(log);
+    else groups.push({ label, logs: [log] });
+  }
 
-    if (isOverfed && log.status !== 'failed') {
-      notifs.push({
-        id: `overfed-${log.id}`, type: 'error', source: 'overfeeding', priority: 0,
-        title: 'Pakan Diberikan Berlebihan',
-        body: `Diberikan ${log.amountDispensed}g, target ${log.amountRequested}g (lebih ${((log.amountDispensed ?? 0) - log.amountRequested).toFixed(1)}g). Periksa kalibrasi timbangan.`,
-        time: formatTime(log.timestamp),
-        route: 'history',
-      });
-      return;
-    }
+  const todayLogs = sortedLogs.filter((l) => getDateLabel(l.timestamp) === 'Hari Ini');
+  const newCount  = sortedLogs.filter((l) => isNew(l.timestamp)).length;
+  const todayGram = todayLogs.reduce((s, l) => s + (l.amountDispensed ?? 0), 0);
 
-    const source: NotifSource = trigger === 'manual' ? 'manual' : 'auto';
-
-    const title =
-      log.status === 'success'
-        ? trigger === 'manual' ? 'Feeding Manual Berhasil'      : 'Feeding Otomatis Berhasil'
-        : log.status === 'warning'
-        ? trigger === 'manual' ? 'Feeding Manual Kurang Akurat'  : 'Feeding Otomatis Kurang Akurat'
-        : trigger === 'manual' ? 'Feeding Manual Gagal'          : 'Feeding Otomatis Gagal';
-
-    const body =
-      log.status === 'success'
-        ? `Diberikan ${log.amountDispensed}g sesuai target ${log.amountRequested}g.`
-        : log.status === 'warning'
-        ? `Diberikan ${log.amountDispensed}g dari target ${log.amountRequested}g. Selisih melebihi toleransi ±5%.`
-        : `Gagal memberikan pakan. Target ${log.amountRequested}g tidak tercapai. Periksa stok dan servo.`;
-
-    notifs.push({
-      id: log.id,
-      type: log.status === 'success' ? 'success' : log.status === 'warning' ? 'warning' : 'error',
-      source, title, body,
-      time: formatTime(log.timestamp),
-      priority: log.status === 'success' ? 4 : log.status === 'warning' ? 2 : 1,
-      route: trigger === 'manual' ? 'feeding-control' : 'history',
-    });
-  });
-
-  // ── Group ─────────────────────────────────────────────────────────────────
-  const grouped = SECTION_ORDER.reduce<Record<NotifSource, NotifItem[]>>(
-    (acc, src) => {
-      acc[src] = notifs
-        .filter((n) => n.source === src)
-        .sort((a, b) => a.priority - b.priority);
-      return acc;
-    },
-    {} as Record<NotifSource, NotifItem[]>
-  );
-
-  const urgentCount = notifs.filter((n) => n.type === 'error' || n.type === 'warning').length;
-
+  // ── Render ────────────────────────────────────────────────────────────────
   return (
-    <div className="space-y-6 max-w-3xl">
+    <div className="space-y-5 max-w-2xl">
 
       {/* ── Header ── */}
-      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+      <div className="flex items-start justify-between gap-3">
         <div>
-          <h2 className="text-2xl sm:text-3xl font-black text-gray-900 flex items-center gap-2.5">
-            <Bell className="w-6 h-6 sm:w-7 sm:h-7 text-amber-500 shrink-0" />
+          <h2 className="text-2xl font-black text-gray-900 flex items-center gap-2.5">
+            <Bell className="w-6 h-6 text-amber-500 shrink-0" />
             Notifikasi
           </h2>
-          <p className="text-gray-400 mt-0.5 text-sm">
-            {urgentCount > 0
-              ? `${urgentCount} notifikasi perlu perhatian segera`
-              : 'Semua sistem berjalan dalam kondisi normal'}
+          <p className="text-sm text-gray-400 mt-0.5">
+            {newCount > 0
+              ? `${newCount} notifikasi baru sejak kunjungan terakhir`
+              : 'Semua notifikasi sudah dibaca'}
           </p>
         </div>
-        {urgentCount > 0 && (
-          <span className="self-start sm:self-auto px-3 py-1.5 rounded-full bg-red-500 text-white text-xs font-black shrink-0">
-            {urgentCount} perlu tindakan
+        {newCount > 0 && (
+          <span className="shrink-0 self-start px-3 py-1 rounded-full bg-amber-500 text-white text-xs font-black">
+            {newCount} baru
           </span>
         )}
       </div>
 
       {/* ── Summary strip ── */}
-      <div className="grid grid-cols-3 gap-2 sm:gap-3">
-        <SummaryCard
-          icon={device?.isOnline ? Wifi : WifiOff}
-          iconBg={device?.isOnline ? 'bg-green-50' : 'bg-gray-50'}
-          iconColor={device?.isOnline ? 'text-green-500' : 'text-gray-400'}
-          label="Perangkat"
-          value={device ? (device.isOnline ? 'Online' : 'Offline') : 'Tidak ada'}
-          valueColor={device?.isOnline ? 'text-green-600' : 'text-gray-500'}
-        />
-        <SummaryCard
-          icon={Database}
-          iconBg={(device?.foodStockLevel ?? 100) < 20 ? 'bg-orange-50' : 'bg-green-50'}
-          iconColor={(device?.foodStockLevel ?? 100) < 20 ? 'text-orange-500' : 'text-green-500'}
-          label="Stok Pakan"
-          value={device ? `${device.foodStockLevel}%` : '—'}
-          valueColor={(device?.foodStockLevel ?? 100) < 20 ? 'text-orange-600' : 'text-green-600'}
-        />
-        <SummaryCard
-          icon={Bell}
-          iconBg="bg-amber-50"
-          iconColor="text-amber-500"
-          label="Hari Ini"
-          value={`${recentLogs.length} feeding`}
-          valueColor="text-amber-700"
-        />
+      <div className="grid grid-cols-3 gap-2">
+        {/* Today feeding count */}
+        <div className="bg-white rounded-2xl border border-gray-100 p-3 flex flex-col items-center justify-center gap-1">
+          <p className="text-xl font-black text-amber-600">{todayLogs.length}×</p>
+          <p className="text-[10px] text-gray-400 font-medium text-center leading-tight">Feeding Hari Ini</p>
+        </div>
+        {/* Today total gram */}
+        <div className="bg-white rounded-2xl border border-gray-100 p-3 flex flex-col items-center justify-center gap-1">
+          <p className="text-xl font-black text-blue-600">{todayGram}g</p>
+          <p className="text-[10px] text-gray-400 font-medium text-center leading-tight">Total Pakan</p>
+        </div>
+        {/* Stock */}
+        <div className="bg-white rounded-2xl border border-gray-100 p-3 flex flex-col items-center justify-center gap-1">
+          <p className={cn(
+            'text-xl font-black',
+            !device ? 'text-gray-400'
+            : (device.foodStockLevel < 20 ? 'text-red-500' : 'text-green-600'),
+          )}>
+            {device ? `${device.foodStockLevel}%` : '—'}
+          </p>
+          <p className="text-[10px] text-gray-400 font-medium text-center leading-tight">Stok Pakan</p>
+        </div>
       </div>
 
-      {/* ── Section list ── */}
-      {SECTION_ORDER.map((src) => {
-        const items = grouped[src];
-        if (!items || items.length === 0) return null;
-        const srcCfg = SOURCE_CONFIG[src];
-        const SrcIcon = srcCfg.icon;
-
-        return (
-          <div key={src} className="space-y-2">
-            {/* Section header */}
-            <div className="flex items-center gap-2 px-1">
-              <div className={cn('w-6 h-6 sm:w-7 sm:h-7 rounded-lg flex items-center justify-center shrink-0', srcCfg.bg)}>
-                <SrcIcon className={cn('w-3.5 h-3.5 sm:w-4 sm:h-4', srcCfg.text)} />
-              </div>
-              <h3 className="text-[10px] sm:text-xs font-black uppercase tracking-widest text-gray-500">
-                {SECTION_LABELS[src]}
-              </h3>
-              <span className={cn('ml-auto px-2 py-0.5 rounded-full text-[10px] font-black', srcCfg.bg, srcCfg.text)}>
-                {items.length}
-              </span>
-            </div>
-
-            {/* Items */}
-            <div className="space-y-2">
-              {items.map((notif) => {
-                const cfg      = TYPE_CONFIG[notif.type];
-                const Icon     = cfg.icon;
-                const clickable = !!notif.route && !!onNavigate;
-
-                const inner = (
-                  <>
-                    <div className={cn('w-8 h-8 sm:w-9 sm:h-9 rounded-xl flex items-center justify-center shrink-0 mt-0.5', cfg.iconBg)}>
-                      <Icon className={cn('w-4 h-4', cfg.iconColor)} />
-                    </div>
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-start justify-between gap-2">
-                        <p className={cn('font-black text-xs sm:text-sm leading-snug', cfg.iconColor)}>
-                          {notif.title}
-                        </p>
-                        <span className="text-[10px] sm:text-xs text-gray-400 shrink-0 whitespace-nowrap">
-                          {notif.time}
-                        </span>
-                      </div>
-                      <p className="text-[11px] sm:text-xs text-gray-500 mt-1 leading-relaxed">
-                        {notif.body}
-                      </p>
-                      <div className="mt-2 flex items-center gap-2 flex-wrap">
-                        <span className={cn(
-                          'inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-black',
-                          srcCfg.bg, srcCfg.text
-                        )}>
-                          <SrcIcon className="w-2.5 h-2.5" />
-                          {srcCfg.label}
-                        </span>
-                        {clickable && (
-                          <span className="text-[10px] text-gray-400 font-medium">Ketuk →</span>
-                        )}
-                      </div>
-                    </div>
-                  </>
-                );
-
-                const baseClass = cn(
-                  'w-full text-left bg-white rounded-2xl border p-3 sm:p-4 flex items-start gap-3 transition-all',
-                  cfg.border,
-                  clickable && 'cursor-pointer hover:shadow-md active:scale-[0.99]'
-                );
-
-                return clickable ? (
-                  <button
-                    key={notif.id}
-                    type="button"
-                    onClick={() => onNavigate!(notif.route!)}
-                    className={baseClass}
-                  >
-                    {inner}
-                  </button>
-                ) : (
-                  <div key={notif.id} className={baseClass}>
-                    {inner}
-                  </div>
-                );
-              })}
-            </div>
+      {/* ── Device alerts (pinned system notifications) ── */}
+      {alerts.length > 0 && (
+        <div className="space-y-2">
+          <div className="flex items-center gap-2 px-1">
+            <div className="h-px flex-1 bg-gray-100" />
+            <span className="text-[10px] font-black uppercase tracking-widest text-gray-400 shrink-0 flex items-center gap-1">
+              <AlertTriangle className="w-3 h-3" /> Peringatan Sistem
+            </span>
+            <div className="h-px flex-1 bg-gray-100" />
           </div>
-        );
-      })}
+          {alerts.map((a) => (
+            <AlertBanner
+              key={a.id}
+              alert={a}
+              isAdmin={isAdmin}
+              onClick={() => onNavigate?.('settings')}
+            />
+          ))}
+        </div>
+      )}
 
-      {/* ── Empty state ── */}
-      {notifs.length === 0 && (
-        <div className="bg-white rounded-3xl border border-gray-100 p-12 text-center">
+      {/* ── Feeding log notifications ── */}
+      {sortedLogs.length === 0 ? (
+        <div className="bg-white rounded-3xl border border-gray-100 p-14 text-center">
           <div className="text-4xl mb-3">🐾</div>
-          <p className="text-gray-500 font-bold">Tidak ada notifikasi</p>
-          <p className="text-gray-400 text-sm mt-1">Semua sistem berjalan normal.</p>
+          <p className="text-gray-600 font-black text-base">Belum Ada Aktivitas Feeding</p>
+          <p className="text-gray-400 text-sm mt-1.5 leading-relaxed">
+            Notifikasi feeding otomatis &amp; manual akan muncul di sini secara real-time.
+          </p>
+        </div>
+      ) : (
+        <div className="space-y-5">
+          {groups.map(({ label, logs: grpLogs }) => (
+            <div key={label}>
+              {/* Date separator */}
+              <div className="flex items-center gap-2 mb-2 px-1">
+                <div className="h-px flex-1 bg-gray-100" />
+                <span className="text-[10px] font-black uppercase tracking-widest text-gray-400 shrink-0">
+                  {label}
+                </span>
+                <div className="h-px flex-1 bg-gray-100" />
+              </div>
+
+              <div className="space-y-2">
+                {grpLogs.map((log) => (
+                  <FeedCard
+                    key={log.id}
+                    log={log}
+                    catName={cat?.name}
+                    isNew={isNew(log.timestamp)}
+                    isAdmin={isAdmin}
+                    onClick={() => onNavigate?.(isAdmin && isManual(log.notes) ? 'feeding-control' : 'history')}
+                  />
+                ))}
+              </div>
+            </div>
+          ))}
+
+          {/* Refresh hint */}
+          <div className="flex items-center justify-center gap-1.5 pt-1 pb-2">
+            <RefreshCw className="w-3 h-3 text-gray-300" />
+            <span className="text-[10px] text-gray-300 font-medium">
+              Data diperbarui secara real-time via Firestore
+            </span>
+          </div>
         </div>
       )}
     </div>

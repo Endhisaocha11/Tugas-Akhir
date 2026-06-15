@@ -14,6 +14,8 @@ export interface UserProfile {
   onboardingCompleted: boolean;
   claimedDeviceId: string | null;
   createdAt: number;
+  monitoringAdminId?: string;    // USER role: UID admin yang dimonitor
+  monitoringAdminEmail?: string; // USER role: email admin (untuk display di sidebar)
 }
 
 // ── Smart Adjustment ──────────────────────────────────────────────────────────

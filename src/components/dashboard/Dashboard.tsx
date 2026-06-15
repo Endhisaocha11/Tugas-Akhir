@@ -1,5 +1,5 @@
 import { useState, useMemo, useEffect } from 'react';
-import { Layers, AlertCircle, Weight, Wifi, WifiOff, Settings2, X, Copy, Check, Link2, Clock, TrendingUp, Activity, BarChart3, PieChart as PieIcon, Calendar, ChevronLeft, ChevronRight, Utensils, CalendarClock } from 'lucide-react';
+import { Layers, AlertCircle, Weight, Wifi, WifiOff, Settings2, X, Copy, Check, Link2, Clock, TrendingUp, Activity, BarChart3, PieChart as PieIcon, Calendar, ChevronLeft, ChevronRight, Utensils } from 'lucide-react';
 import {
   AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip,
   ResponsiveContainer, BarChart, Bar, PieChart, Pie, Cell, ReferenceLine,
@@ -28,14 +28,19 @@ function localDateStr(d = new Date()) {
 }
 
 type FeedStatus = 'overfeed'|'met'|'under'|'none'|'future'|'today-overfeed'|'today-met'|'today-under'|'today-none';
-function getFeedStatus(date: Date, logsByDay: Record<string, FeedingLog[]>, dailyTarget: number): FeedStatus {
+function getFeedStatus(
+  date: Date,
+  logsByDay: Record<string, FeedingLog[]>,
+  dailyTarget: number,
+): FeedStatus {
   const now = new Date();
   const isToday = date.toDateString() === now.toDateString();
   const isPast  = date < now && !isToday;
   if (!isToday && !isPast) return 'future';
-  const key   = `${date.getFullYear()}-${date.getMonth()}-${date.getDate()}`;
-  const logs  = logsByDay[key] ?? [];
-  const total = logs.reduce((s, l) => s + (l.amountDispensed ?? 0), 0);
+  const key    = `${date.getFullYear()}-${date.getMonth()}-${date.getDate()}`;
+  const logs   = logsByDay[key] ?? [];
+  const logged = logs.reduce((s, l) => s + (l.amountDispensed ?? 0), 0);
+  const total  = logged;
   if (total === 0)               return isToday ? 'today-none'     : 'none';
   if (dailyTarget === 0)         return isToday ? 'today-met'      : 'met';
   if (total > dailyTarget)       return isToday ? 'today-overfeed' : 'overfeed';
@@ -54,7 +59,10 @@ const STATUS_STYLE: Record<FeedStatus, string> = {
   'today-none':     'bg-blue-500 text-white border-blue-600 ring-2 ring-blue-400 ring-offset-1',
 };
 
-function FeedingCalendarAnalytics({ feedingLogs, dailyTarget }: { feedingLogs: FeedingLog[]; dailyTarget: number }) {
+function FeedingCalendarAnalytics({ feedingLogs, dailyTarget }: {
+  feedingLogs: FeedingLog[];
+  dailyTarget: number;
+}) {
   const [viewDate, setViewDate]   = useState(() => new Date());
   const [selectedDay, setSelectedDay] = useState<Date | null>(null);
   const year  = viewDate.getFullYear();
@@ -73,9 +81,9 @@ function FeedingCalendarAnalytics({ feedingLogs, dailyTarget }: { feedingLogs: F
     ...Array.from({ length: daysInMonth }, (_, i) => new Date(year, month, i + 1)),
   ];
   while (cells.length % 7 !== 0) cells.push(null);
-  const selectedKey  = selectedDay ? `${selectedDay.getFullYear()}-${selectedDay.getMonth()}-${selectedDay.getDate()}` : null;
-  const selectedLogs = (selectedKey ? logsByDay[selectedKey] ?? [] : []).sort((a, b) => a.timestamp - b.timestamp);
-  const selectedTotal  = selectedLogs.reduce((s, l) => s + (l.amountDispensed ?? 0), 0);
+  const selectedKey   = selectedDay ? `${selectedDay.getFullYear()}-${selectedDay.getMonth()}-${selectedDay.getDate()}` : null;
+  const displayLogs   = (selectedKey ? logsByDay[selectedKey] ?? [] : []).sort((a, b) => a.timestamp - b.timestamp);
+  const selectedTotal = displayLogs.reduce((s, l) => s + (l.amountDispensed ?? 0), 0);
   const selectedStatus = selectedDay ? getFeedStatus(selectedDay, logsByDay, dailyTarget) : null;
   return (
     <div className="bg-white rounded-3xl border border-gray-100 p-4 sm:p-6 shadow-sm">
@@ -123,10 +131,10 @@ function FeedingCalendarAnalytics({ feedingLogs, dailyTarget }: { feedingLogs: F
           <div className="grid grid-cols-7 gap-0.5 sm:gap-1">
             {cells.map((date, i) => {
               if (!date) return <div key={i} />;
-              const status     = getFeedStatus(date, logsByDay, dailyTarget);
-              const isSelected = selectedDay?.toDateString() === date.toDateString();
               const key2       = `${date.getFullYear()}-${date.getMonth()}-${date.getDate()}`;
               const dayTotal   = (logsByDay[key2] ?? []).reduce((s, l) => s + (l.amountDispensed ?? 0), 0);
+              const status     = getFeedStatus(date, logsByDay, dailyTarget);
+              const isSelected = selectedDay?.toDateString() === date.toDateString();
               return (
                 <button key={i} type="button"
                   title={`${date.getDate()} ${MONTHS_ID[date.getMonth()]} — ${dayTotal}g`}
@@ -204,22 +212,41 @@ function FeedingCalendarAnalytics({ feedingLogs, dailyTarget }: { feedingLogs: F
               )}
 
               <div className="space-y-1 overflow-y-auto max-h-36 sm:max-h-44">
-                {selectedLogs.map((log) => (
-                  <div key={log.id} className="flex items-center justify-between bg-white rounded-xl px-2.5 py-2 border border-gray-100">
-                    <div className="flex items-center gap-1.5">
-                      <div className={cn('w-1.5 h-1.5 rounded-full shrink-0',
-                        log.notes === 'manual' ? 'bg-blue-400' : 'bg-amber-400')} />
-                      <span className="text-xs font-bold text-gray-600">
-                        {new Date(log.timestamp).toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' })}
-                      </span>
+                {displayLogs.map((log) => {
+                  const isVirtual = log.id?.startsWith('virtual-');
+                  const isMissed  = log.id?.startsWith('missed-');
+                  return (
+                    <div key={log.id} className={cn(
+                      'flex items-center justify-between rounded-xl px-2.5 py-2 border',
+                      isVirtual ? 'bg-orange-50 border-orange-100 border-dashed' :
+                      isMissed  ? 'bg-gray-50 border-gray-200 border-dashed' :
+                      'bg-white border-gray-100'
+                    )}>
+                      <div className="flex items-center gap-1.5">
+                        <div className={cn('w-1.5 h-1.5 rounded-full shrink-0',
+                          log.notes === 'manual' ? 'bg-blue-400' :
+                          isVirtual ? 'bg-orange-300' :
+                          isMissed  ? 'bg-gray-300' :
+                          'bg-amber-400')} />
+                        <span className={cn('text-xs font-bold', isMissed ? 'text-gray-400' : 'text-gray-600')}>
+                          {new Date(log.timestamp).toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' })}
+                        </span>
+                      </div>
+                      <div className="text-right">
+                        <span className={cn('text-xs font-black',
+                          isVirtual ? 'text-orange-500' :
+                          isMissed  ? 'text-gray-400' :
+                          'text-amber-600')}>
+                          {log.amountDispensed}g
+                        </span>
+                        <span className="text-[9px] text-gray-400 ml-1">
+                          {log.notes === 'manual' ? 'M' : isVirtual ? 'A~' : isMissed ? 'A?' : 'A'}
+                        </span>
+                      </div>
                     </div>
-                    <div className="text-right">
-                      <span className="text-xs font-black text-amber-600">{log.amountDispensed}g</span>
-                      <span className="text-[9px] text-gray-400 ml-1">{log.notes === 'manual' ? 'M' : 'A'}</span>
-                    </div>
-                  </div>
-                ))}
-                {selectedLogs.length === 0 && (
+                  );
+                })}
+                {displayLogs.length === 0 && (
                   <div className="flex flex-col items-center py-4 text-center">
                     <Utensils className="w-6 h-6 text-gray-200 mb-1" />
                     <p className="text-[10px] text-gray-400">Tidak ada pemberian</p>
@@ -451,9 +478,10 @@ export function Dashboard() {
   }, []);
   const todayCountFrom = Math.max(todayStartMs, profileUpdatedAt);
 
-  // Semua log tanpa filter profileUpdatedAt — profileUpdatedAt hanya mempengaruhi
-  // todayCountFrom (hitung harian), bukan visibilitas riwayat penuh.
-  const catLogs = feedingLogs;
+  // Saring hanya log milik kucing aktif saat ini.
+  // feedingLogs dari useCatData sudah disaring per ownerId, tapi bisa
+  // mengandung log dari profil kucing lama jika catId berubah.
+  const catLogs = feedingLogs.filter((l) => l.catId === cat?.id);
 
   // Log aktif berdasarkan filter yang dipilih
   const activeLogs = useMemo(() => {
@@ -511,18 +539,18 @@ export function Dashboard() {
     return s;
   }, [feedingLogs, schedule, todayCountFrom, cat?.id]);
 
-  // Virtual grams: past-time active slots without actual logs (only relevant for today view)
-  const todayVirtualGrams = useMemo(() => {
-    if (!smartFeedEnabled || filterMode !== 'today') return 0;
-    return schedule
-      .filter((s) => s.active !== false && s.time <= currentTimeStr && !deliveredTodaySlotTimes.has(s.time))
-      .reduce((sum, s) => sum + s.amount, 0);
-  }, [schedule, currentTimeStr, smartFeedEnabled, deliveredTodaySlotTimes, filterMode]);
-
-  // Total counted toward daily target (actual + virtual for today, actual only for other modes)
-  const countedTotal = selectedTotal + todayVirtualGrams;
-
   const dailyTarget = cat?.dailyGramTarget ?? 0;
+
+  // Total gram yang benar-benar ter-log hari ini (tanpa virtual)
+  const todayLoggedTotal = useMemo(() =>
+    catLogs
+      .filter((l) => l.timestamp >= todayCountFrom)
+      .reduce((sum, l) => sum + (l.amountDispensed ?? 0), 0)
+  , [catLogs, todayCountFrom]);
+
+  const countedTotal = selectedTotal;
+  const activeLogsWithVirtual = activeLogs;
+
   const progressPct =
     dailyTarget > 0 ? Math.min(Math.round((countedTotal / dailyTarget) * 100), 100) : 0;
   const foodStock = device?.foodStockLevel ?? 0;
@@ -590,13 +618,13 @@ export function Dashboard() {
       });
     }
     const buckets: Record<string, number> = Object.fromEntries(bucketLabels.map((l) => [l, 0]));
-    activeLogs.forEach((log) => {
+    activeLogsWithVirtual.forEach((log) => {
       const hour = new Date(log.timestamp).getHours();
       const label = bucketLabels[Math.floor(hour / 4)];
       if (label !== undefined) buckets[label] += log.amountDispensed ?? 0;
     });
     return bucketLabels.map((time) => ({ time, weight: Math.round(buckets[time]) }));
-  }, [filterMode, activeLogs, catLogs]);
+  }, [filterMode, activeLogsWithVirtual, catLogs]);
 
   // ── Analytics data (7 days rolling, uses catLogs — not affected by date filter) ─
   const ANALYTICS_COLORS = ['#F59E0B', '#1E3A5F'];
@@ -626,7 +654,7 @@ export function Dashboard() {
 
   const analyticsBarData = useMemo(() => {
     const pm = { Pagi: 0, Siang: 0, Sore: 0, Malam: 0 };
-    activeLogs.forEach((log) => {
+    activeLogsWithVirtual.forEach((log) => {
       const h = new Date(log.timestamp).getHours();
       if (h < 11)       pm.Pagi   += log.amountDispensed ?? 0;
       else if (h < 15)  pm.Siang  += log.amountDispensed ?? 0;
@@ -634,15 +662,15 @@ export function Dashboard() {
       else              pm.Malam  += log.amountDispensed ?? 0;
     });
     return Object.entries(pm).map(([period, grams]) => ({ period, grams: Math.round(grams) }));
-  }, [activeLogs]);
+  }, [activeLogsWithVirtual]);
 
-  const analyticsManualCount = activeLogs.filter((l) => l.notes === 'manual').length;
-  const analyticsScheduledCount = activeLogs.length - analyticsManualCount;
+  const analyticsManualCount    = activeLogsWithVirtual.filter((l) => l.notes === 'manual').length;
+  const analyticsScheduledCount = activeLogsWithVirtual.length - analyticsManualCount;
   const analyticsPieData = [
-    { name: 'Terjadwal', value: activeLogs.length > 0 ? Math.round((analyticsScheduledCount / activeLogs.length) * 100) : 0 },
-    { name: 'Manual',    value: activeLogs.length > 0 ? Math.round((analyticsManualCount   / activeLogs.length) * 100) : 0 },
+    { name: 'Terjadwal', value: activeLogsWithVirtual.length > 0 ? Math.round((analyticsScheduledCount / activeLogsWithVirtual.length) * 100) : 0 },
+    { name: 'Manual',    value: activeLogsWithVirtual.length > 0 ? Math.round((analyticsManualCount    / activeLogsWithVirtual.length) * 100) : 0 },
   ];
-  const hasAnalyticsData  = activeLogs.length > 0;
+  const hasAnalyticsData  = activeLogsWithVirtual.length > 0;
   const pieDisplayData    = hasAnalyticsData ? analyticsPieData : [{ name: 'empty', value: 1 }];
   const pieDisplayColors  = hasAnalyticsData ? ANALYTICS_COLORS : ['#E5E7EB'];
 
@@ -791,12 +819,6 @@ export function Dashboard() {
             <p className="text-base text-gray-400 mt-2 font-medium">
               dari {dailyTarget > 0 ? `${dailyTarget}g` : '—'}
             </p>
-            {todayVirtualGrams > 0 && (
-              <div className="mt-3 flex items-center gap-1.5 text-[11px] text-gray-400 bg-gray-50 px-3 py-1.5 rounded-full border border-gray-100">
-                <CalendarClock className="w-3 h-3 shrink-0" />
-                <span>Aktual feeder: <span className="font-bold text-gray-600">{selectedTotal}g</span> + estimasi <span className="font-bold text-gray-600">{todayVirtualGrams}g</span></span>
-              </div>
-            )}
           </div>
           <div>
             <div className="w-full h-4 bg-gray-100 rounded-full overflow-hidden">
@@ -804,7 +826,7 @@ export function Dashboard() {
                 initial={{ width: 0 }}
                 animate={{ width: `${progressPct}%` }}
                 transition={{ duration: 0.8 }}
-                className={cn('h-full rounded-full', progressPct >= 100 ? 'bg-red-400' : 'bg-amber-400')}
+                className={cn('h-full rounded-full', countedTotal > dailyTarget ? 'bg-red-400' : progressPct >= 100 ? 'bg-green-400' : 'bg-amber-400')}
               />
             </div>
             <p className="text-sm text-center text-gray-500 mt-2 font-semibold">
@@ -858,10 +880,18 @@ export function Dashboard() {
                 ? 'bg-green-100 text-green-700'
                 : 'bg-gray-100 text-gray-400'
             )}>
-              {!device ? 'Tidak ada'
-               : device.lastPulse && Date.now() - device.lastPulse < 120000 ? 'Baru diperbarui'
-               : device.lastPulse ? `${Math.floor((Date.now() - device.lastPulse) / 60000)} mnt lalu`
-               : 'Tidak ada sinyal'}
+            {
+              !device
+                ? 'Tidak ada'
+                : device.lastPulse && Date.now() - device.lastPulse < 120000
+                  ? 'Baru diperbarui'
+                  : device.lastPulse
+                    ? new Date(device.lastPulse).toLocaleTimeString('id-ID', {
+                        hour: '2-digit',
+                        minute: '2-digit',
+                      })
+                    : 'Tidak ada sinyal'
+            }
             </span>
           </div>
           <div>

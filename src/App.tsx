@@ -245,20 +245,30 @@ function DeviceSelectionScreen() {
 function AppContent() {
   const { user, profile, loading } = useAuth();
   const [currentTab, setCurrentTab] = useState('dashboard');
-  const [loadError, setLoadError] = useState(false);
+  const [loadError, setLoadError]   = useState(false);
+  const [profileError, setProfileError] = useState(false);
 
-  // Show error page if Firebase takes too long to respond
+  // Timeout untuk Firebase auth + Firestore awal (saat app pertama load)
   useEffect(() => {
-    if (!loading) {
-      setLoadError(false);
-      return;
-    }
+    if (!loading) { setLoadError(false); return; }
     const t = setTimeout(() => setLoadError(true), 12000);
     return () => clearTimeout(t);
   }, [loading]);
 
-  if (loadError) {
-    return <ErrorPage onRetry={() => { setLoadError(false); window.location.reload(); }}/>;
+  // Timeout terpisah: user sudah login tapi profil Firestore tidak kunjung muncul.
+  // Ini terjadi jika Firestore rules salah, jaringan lambat, atau doc belum terbuat.
+  useEffect(() => {
+    if (loading || !user || profile) { setProfileError(false); return; }
+    const t = setTimeout(() => setProfileError(true), 10000);
+    return () => clearTimeout(t);
+  }, [loading, user, profile]);
+
+  if (loadError || profileError) {
+    return <ErrorPage onRetry={() => {
+      setLoadError(false);
+      setProfileError(false);
+      window.location.reload();
+    }}/>;
   }
 
   if (loading) return <CatLoader/>;
@@ -292,6 +302,17 @@ function AppContent() {
   }
 
   // ── User flow ─────────────────────────────────────────────────────────────────
+
+  // Auto-restore dari Firestore jika localStorage kosong (perangkat baru / login ulang setelah popup clear).
+  // Dilewati jika user baru saja klik "Ganti Admin" (flag sessionStorage skipAutoRestore).
+  if (!localStorage.getItem('appMode') && profile?.monitoringAdminId && !sessionStorage.getItem('skipAutoRestore')) {
+    localStorage.setItem('appMode', 'monitor');
+    localStorage.setItem('selectedAdminId', profile.monitoringAdminId);
+    if (profile.monitoringAdminEmail) {
+      localStorage.setItem('selectedAdminEmail', profile.monitoringAdminEmail);
+    }
+  }
+
   const appMode = localStorage.getItem('appMode');
 
   if (!appMode) return <MonitoringSelection />;

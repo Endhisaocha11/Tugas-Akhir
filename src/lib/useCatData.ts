@@ -141,6 +141,10 @@ export function useCatData(): CatData {
   // 3. Gunakan Date.now() bukan data.ts — ESP32 kirim ts sebagai jam lokal WIB
   //    tapi diperlakukan sebagai UTC sehingga timestamp bergeser +7 jam.
   const isProcessingRef = useRef(false);
+  // Dedup per-slot per-hari: ESP32 kadang retry nulis scheduledFeedLog setelah node dihapus
+  // sehingga browser memproses slot yang sama >1x. Map: "catId:slotKey" → dateString.
+  const processedSlotsRef = useRef<Map<string, string>>(new Map());
+
   useEffect(() => {
     if (!claimedDeviceId || !rtdb || !cat?.id) return;
     const catId = cat.id;
@@ -154,6 +158,15 @@ export function useCatData(): CatData {
       isProcessingRef.current = true;
 
       try {
+        // Cek apakah slot ini sudah diproses hari ini (guard ESP32 retry)
+        const today   = new Date().toDateString();
+        const slotKey = `${catId}:${data.slot ?? Math.floor((data.ts || Date.now()) / 60000)}`;
+        if (processedSlotsRef.current.get(slotKey) === today) {
+          // Sudah diproses — hapus node retry tanpa buat log baru
+          await set(ref(rtdb, `devices/${claimedDeviceId}/scheduledFeedLog`), null).catch(() => {});
+          return;
+        }
+
         // Tandai processed dulu agar listener kedua (StrictMode) tidak ikut proses
         await set(ref(rtdb, `devices/${claimedDeviceId}/scheduledFeedLog/processed`), true);
         await addDoc(collection(db, 'feedingLogs'), {
@@ -165,15 +178,18 @@ export function useCatData(): CatData {
           status:          'success',
           notes:           'scheduled',
         });
+        processedSlotsRef.current.set(slotKey, today);
         // Hapus node setelah log dibuat agar ESP32 bisa menulis slot berikutnya secara fresh
-        // (tanpa ini, ESP32 yang overwrite node yang sama akan terblokir oleh processed:true)
         await set(ref(rtdb, `devices/${claimedDeviceId}/scheduledFeedLog`), null);
       } finally {
         isProcessingRef.current = false;
       }
     });
 
-    return () => { unsubSchedLog(); isProcessingRef.current = false; };
+    // Jangan reset isProcessingRef di cleanup — jika StrictMode unmount+remount
+    // saat processing sedang berjalan, reset ini menyebabkan remount ikut memproses
+    // lagi → duplikat log. finally{} di atas sudah menangani reset setelah selesai.
+    return () => { unsubSchedLog(); };
   }, [claimedDeviceId, cat?.id]);
 
   // ── Effect 3: feeding logs — semua catId milik owner ini ────────────────
@@ -188,7 +204,18 @@ export function useCatData(): CatData {
         const logs = snap.docs
           .map((d) => ({ id: d.id, ...d.data() } as FeedingLog))
           .sort((a, b) => b.timestamp - a.timestamp);
-        setFeedingLogs(logs);
+        // Deduplicate: scheduled logs dalam window 3 menit dari catId yang sama
+        // = akibat bug ESP32 multi-retry. Hanya simpan 1 per window.
+        const seen = new Set<string>();
+        const deduped = logs.filter((log) => {
+          if (log.notes !== 'scheduled') return true;
+          const bucket = Math.floor(log.timestamp / (3 * 60 * 1000));
+          const key    = `${log.catId}:${bucket}`;
+          if (seen.has(key)) return false;
+          seen.add(key);
+          return true;
+        });
+        setFeedingLogs(deduped);
       }
     );
 

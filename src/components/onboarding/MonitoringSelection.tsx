@@ -91,10 +91,14 @@ export function MonitoringSelection() {
   const handleSelectAdmin = async (admin: any) => {
     if (!user) return;
     try {
+      sessionStorage.removeItem('skipAutoRestore');
       localStorage.setItem('selectedAdminId', admin.id);
       localStorage.setItem('selectedAdminEmail', admin.email);
       localStorage.setItem('appMode', 'monitor');
-      await updateDoc(doc(db, 'users', user.uid), { monitoringAdminId: admin.id });
+      await updateDoc(doc(db, 'users', user.uid), {
+        monitoringAdminId: admin.id,
+        monitoringAdminEmail: admin.email,
+      });
       window.location.href = '/';
     } catch (err) {
       console.error(err);

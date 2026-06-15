@@ -258,14 +258,70 @@ export function FeedingControl() {
       .reduce((sum, l) => sum + (l.amountDispensed ?? 0), 0)
   );
 
-  // Slot otomatis aktif yang jamnya sudah lewat & tidak ada log aktual = dianggap sudah terkirim.
-  // Termasuk slot sebelum profileUpdatedAt: kalau jam sudah lewat, tetap dianggap sudah diberikan.
-  const pastUnloggedAutoTotal = useMemo(() => {
-    if (!smartFeedEnabled) return 0;
-    return schedule
-      .filter((s) => s.active !== false && s.time <= currentTimeStr && !deliveredTodaySlots.has(s.time))
-      .reduce((sum, s) => sum + s.amount, 0);
-  }, [schedule, currentTimeStr, smartFeedEnabled, deliveredTodaySlots]);
+  // ── Alokasi proporsional terpadu ─────────────────────────────────────────────
+  // Past unlogged DAN future active berbagi faktor yang sama berdasarkan sisa (remaining).
+  // Ini menjamin: todayLoggedTotal + pastVirtual + futureAdjusted = dailyTarget (tidak bisa berlebih).
+  // Sebelumnya pastUnloggedAutoTotal pakai s.amount asli, padahal ESP32 sudah terima jumlah
+  // yang dikurangi saat slot itu masih future → virtual overcounting → total melebihi limit.
+  const allocationResult = useMemo(() => {
+    const pastUnlogged = smartFeedEnabled
+      ? schedule.filter((s) => s.active !== false && s.time <= currentTimeStr && !deliveredTodaySlots.has(s.time))
+      : [];
+    const futureActive = smartFeedEnabled
+      ? schedule.filter((s) => s.active !== false && s.time > currentTimeStr).sort((a, b) => a.time.localeCompare(b.time))
+      : [];
+
+    const pastAmounts = new Map<string, number>(); // time → jumlah proporsional
+    let pastUnloggedTotal = 0;
+    let futureSlots: Array<{ time: string; originalAmount: number; adjustedAmount: number }> | null = null;
+
+    if (dailyTarget > 0) {
+      const P = pastUnlogged.reduce((s, x) => s + x.amount, 0);
+      const F = futureActive.reduce((s, x) => s + x.amount, 0);
+      const totalUndelivered = P + F;
+
+      if (totalUndelivered > 0) {
+        const available = Math.max(0, dailyTarget - todayLoggedTotal);
+        const factor = available / totalUndelivered;
+
+        // Past — proporsional
+        let pastAllocated = 0;
+        pastUnlogged.forEach((s, i) => {
+          const isLast = i === pastUnlogged.length - 1 && futureActive.length === 0;
+          const amt = isLast ? Math.max(0, available - pastAllocated) : Math.round(s.amount * factor);
+          pastAllocated += amt;
+          pastAmounts.set(s.time, amt);
+        });
+        pastUnloggedTotal = pastAllocated;
+
+        // Future — proporsional (slot terakhir menyerap sisa pembulatan)
+        if (futureActive.length > 0) {
+          const futureAvailable = Math.max(0, available - pastUnloggedTotal);
+          let futureAllocated = 0;
+          const futureSlotsRaw = futureActive.map((s, i) => {
+            const isLast = i === futureActive.length - 1;
+            const adjusted = isLast
+              ? Math.max(0, futureAvailable - futureAllocated)
+              : Math.round(s.amount * factor);
+            futureAllocated += adjusted;
+            return { time: s.time, originalAmount: s.amount, adjustedAmount: adjusted };
+          });
+          // null jika tidak ada perubahan dari asli
+          const unchanged = futureSlotsRaw.every((s) => s.adjustedAmount === s.originalAmount);
+          futureSlots = unchanged ? null : futureSlotsRaw;
+        }
+      }
+    } else {
+      // Tidak ada target → pakai jumlah asli
+      pastUnlogged.forEach((s) => pastAmounts.set(s.time, s.amount));
+      pastUnloggedTotal = pastUnlogged.reduce((s, x) => s + x.amount, 0);
+    }
+
+    return { pastUnloggedTotal, pastAmounts, futureSlots };
+  }, [dailyTarget, todayLoggedTotal, schedule, currentTimeStr, smartFeedEnabled, deliveredTodaySlots]);
+
+  const pastUnloggedAutoTotal = allocationResult.pastUnloggedTotal;
+  const adjustedFutureSlots   = allocationResult.futureSlots;
 
   const todayTotal = todayLoggedTotal + pastUnloggedAutoTotal;
 
@@ -275,45 +331,6 @@ export function FeedingControl() {
   const isActuallyOverLimit = dailyTarget > 0 && todayTotal >= dailyTarget;
   const wouldExceed = dailyTarget > 0 && (todayTotal + feedingAmount) > dailyTarget;
   const progressPct = dailyTarget > 0 ? Math.min(Math.round((todayTotal / dailyTarget) * 100), 100) : 0;
-
-  // Redistribusi jadwal masa depan — semua slot aktif disesuaikan proporsional
-  // agar sum(adjusted) = remaining = dailyTarget - todayTotal selalu.
-  //
-  // Rules:
-  // - Manual feeding → remaining turun → slot dikurangi proporsional
-  // - Slot dinonaktifkan → remaining naik relatif terhadap futureTotal → slot lain naik
-  // - Slot sudah berjalan → tidak diubah (hanya futureActive yang diproses)
-  // - sum(adjusted) = remaining persis (slot terakhir menyerap selisih pembulatan)
-  const adjustedFutureSlots = useMemo(() => {
-    if (!dailyTarget) return null;
-    const futureActive = schedule
-      .filter((s) => s.active !== false && s.time > currentTimeStr)
-      .sort((a, b) => a.time.localeCompare(b.time));
-    if (futureActive.length === 0) return null;
-
-    const remaining = Math.max(0, dailyTarget - todayTotal);
-    const futureTotal = futureActive.reduce((sum, s) => sum + s.amount, 0);
-
-    // Tidak perlu sesuaikan jika sudah persis sama
-    if (remaining === futureTotal) return null;
-
-    if (remaining <= 0) {
-      return futureActive.map((s) => ({ time: s.time, originalAmount: s.amount, adjustedAmount: 0 }));
-    }
-
-    // Proporsional scale (naik ATAU turun) — faktor = remaining / futureTotal
-    // Slot terakhir menyerap sisa pembulatan agar total = remaining persis
-    const factor = remaining / futureTotal;
-    let allocated = 0;
-    return futureActive.map((s, i) => {
-      const isLast = i === futureActive.length - 1;
-      const adjusted = isLast
-        ? Math.max(0, remaining - allocated)
-        : Math.round(s.amount * factor);
-      allocated += adjusted;
-      return { time: s.time, originalAmount: s.amount, adjustedAmount: adjusted };
-    });
-  }, [dailyTarget, todayTotal, schedule, currentTimeStr]);
 
   const futureScheduleTotal = adjustedFutureSlots
     ? adjustedFutureSlots.reduce((sum, s) => sum + s.adjustedAmount, 0)
@@ -468,6 +485,7 @@ export function FeedingControl() {
     setFeedPhase('sending');
 
     let wasConfirmed = false;
+    let actualDispensed = feedingAmount; // default: pakai requested jika tidak ada konfirmasi timbangan
 
     try {
       const initialWeight = selectedDevice?.currentWeightOnScale ?? 0;
@@ -500,6 +518,8 @@ export function FeedingControl() {
             unsubscribe = onValue(weightRef, (snapshot) => {
               const current = (snapshot.val() as number) ?? 0;
               if (current >= initialWeight + THRESHOLD) {
+                // Catat berat aktual yang berhasil masuk ke mangkuk
+                actualDispensed = Math.max(1, Math.round(current - initialWeight));
                 clearTimeout(timer);
                 unsubscribe?.();
                 resolve(true);
@@ -516,8 +536,8 @@ export function FeedingControl() {
         deviceId,
         timestamp: Date.now(),
         amountRequested: feedingAmount,
-        amountDispensed: feedingAmount,
-        status: wasConfirmed ? 'success' : 'sent',
+        amountDispensed: actualDispensed,
+        status: wasConfirmed ? 'success' : 'warning',
         notes: 'manual',
       });
 
@@ -864,9 +884,9 @@ export function FeedingControl() {
           {/* Slider */}
           <div className="relative z-10 flex-1 flex flex-col gap-5">
             <div className="flex justify-between items-center">
-              <label className="text-sm font-black text-gray-400 uppercase tracking-widest">
+              <p className="text-sm font-black text-gray-400 uppercase tracking-widest">
                 Ukuran Porsi
-              </label>
+              </p>
               {dailyTarget > 0 && (
                 <span className="text-base text-amber-600 font-bold">
                   Maks: {dailyTarget}g/hari
@@ -1204,12 +1224,21 @@ export function FeedingControl() {
           <div className="flex-1 overflow-y-auto space-y-4 min-h-0">
             {schedule.map((slot, index) => {
               const adjSlot = adjustedFutureSlots?.find((a) => a.time === slot.time);
-              const displayAmount = adjSlot?.adjustedAmount ?? slot.amount;
-              const wasAdjusted = adjSlot !== undefined && adjSlot.adjustedAmount !== slot.amount;
               const deliveredToday = deliveredTodaySlots.has(slot.time);
               // Slot aktif yang waktunya sudah lewat hari ini → ESP32 pasti sudah mengirim
               const isPastToday = slot.active !== false && smartFeedEnabled && slot.time <= currentTimeStr;
               const isDoneToday = deliveredToday || isPastToday;
+
+              // Untuk past unlogged: tampilkan jumlah proporsional (yang diterima ESP32 setelah adjustment)
+              const proportionalPastAmount = (!deliveredToday && isPastToday)
+                ? allocationResult.pastAmounts.get(slot.time)
+                : undefined;
+              const displayAmount = proportionalPastAmount !== undefined
+                ? proportionalPastAmount
+                : (adjSlot?.adjustedAmount ?? slot.amount);
+              const wasAdjusted = proportionalPastAmount !== undefined
+                ? proportionalPastAmount !== slot.amount
+                : (adjSlot !== undefined && adjSlot.adjustedAmount !== slot.amount);
 
               return editingIndex === index ? (
                 <div
@@ -1219,11 +1248,10 @@ export function FeedingControl() {
                   <p className="font-black text-blue-800 text-base">Edit Slot</p>
                   <div className="flex gap-4">
                     <div className="w-full">
-                      <label className="text-xs font-bold text-gray-500 uppercase tracking-widest block mb-1">
+                      <p className="text-xs font-bold text-gray-500 uppercase tracking-widest block mb-1">
                         Waktu
-                      </label>
+                      </p>
                       <input
-                        id="edit-time"
                         type="time"
                         value={editTime}
                         onChange={(e) => setEditTime(e.target.value)}
@@ -1286,7 +1314,7 @@ export function FeedingControl() {
                           {displayAmount}g
                         </p>
                         {wasAdjusted && (
-                          <p className="text-sm text-gray-400 line-through">{adjSlot?.originalAmount}g</p>
+                          <p className="text-sm text-gray-400 line-through">{adjSlot?.originalAmount ?? slot.amount}g</p>
                         )}
                       </div>
                       {wasAdjusted ? (

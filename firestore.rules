@@ -12,7 +12,7 @@ service cloud.firestore {
       return request.auth.uid;
     }
 
-    // Cross-document read — dipakai untuk cek role. Dihitung sekali per request.
+    // Cross-document read — dipakai untuk cek role.
     function getUserRole() {
       return get(/databases/$(database)/documents/users/$(myUid())).data.role;
     }
@@ -23,26 +23,29 @@ service cloud.firestore {
 
     // ── users/ ───────────────────────────────────────────────────────────────
     //
-    // USER (monitor mode) perlu bisa get profil admin yang dipilih → allow get untuk semua.
-    // List hanya untuk SUPER_ADMIN (halaman manajemen user).
+    // allow list: if isSignedIn() — USER perlu bisa query daftar admin
+    // untuk MonitoringSelection (query where role == SUPER_ADMIN).
 
     match /users/{uid} {
       allow get:  if isSignedIn();
-      allow list: if isSuperAdmin();
+      allow list: if isSignedIn();
 
       // Buat profil sendiri saat pertama sign-in
       allow create: if isSignedIn() && myUid() == uid;
 
-      // Update terbatas pada field yang aman — termasuk claimedDeviceId (klaim/lepas device)
+      // Update terbatas pada field yang aman
       allow update: if isSignedIn() && myUid() == uid &&
                       request.resource.data.diff(resource.data).affectedKeys()
-                        .hasOnly(['onboardingCompleted', 'claimedDeviceId', 'email']);
+                        .hasOnly([
+                          'onboardingCompleted',
+                          'claimedDeviceId',
+                          'email',
+                          'monitoringAdminId',
+                          'monitoringAdminEmail',
+                        ]);
     }
 
     // ── cats/ ────────────────────────────────────────────────────────────────
-    //
-    // Monitor mode: USER baca data kucing milik admin lain → allow read semua signed-in.
-    // Write hanya SUPER_ADMIN dan hanya untuk kucing miliknya sendiri.
 
     match /cats/{catId} {
       allow read:   if isSignedIn();
@@ -52,51 +55,30 @@ service cloud.firestore {
     }
 
     // ── catProfileHistory/ ───────────────────────────────────────────────────
-    //
-    // Riwayat profil kucing — dibuat saat admin simpan profil baru via OnboardingFlow.
-    // Monitor mode butuh baca → allow read semua signed-in.
 
     match /catProfileHistory/{histId} {
-      allow read:          if isSignedIn();
-      allow create:        if isSuperAdmin() && request.resource.data.ownerId == myUid();
+      allow read:           if isSignedIn();
+      allow create:         if isSuperAdmin() && request.resource.data.ownerId == myUid();
       allow update, delete: if isSuperAdmin();
     }
 
     // ── feedingLogs/ ─────────────────────────────────────────────────────────
-    //
-    // Collection top-level (BUKAN subcollection cats/).
-    // Monitor mode butuh baca → allow read semua signed-in.
-    // Write dari app (manual feeding) hanya SUPER_ADMIN.
-    // Write dari ESP32 sebaiknya via Firebase Admin SDK (Cloud Function) → bypass rules.
-    // Jika ESP32 pakai Firebase Auth token biasa, ganti allow create ke: if isSignedIn().
 
     match /feedingLogs/{logId} {
-      allow read:          if isSignedIn();
-      allow create:        if isSuperAdmin();
+      allow read:           if isSignedIn();
+      allow create:         if isSuperAdmin();
       allow update, delete: if isSuperAdmin();
     }
 
     // ── devices/ ─────────────────────────────────────────────────────────────
-    //
-    // Semua signed-in user bisa read (untuk DeviceSelectionScreen).
-    // SUPER_ADMIN hanya bisa update field klaim/release dan link cat.
-    // Telemetri ESP32 (isOnline, lastPulse, dll.) ditulis via Admin SDK → bypass rules.
-    //
-    // Jika ESP32 pakai Firebase Auth token, tambahkan rule update terpisah:
-    //   allow update: if isSignedIn() &&
-    //     request.resource.data.diff(resource.data).affectedKeys()
-    //       .hasOnly(['isOnline','lastPulse','foodStockLevel','currentWeightOnScale',
-    //                 'servoStatus','calibrationFactor','lastWeightBeforeDispense']);
 
     match /devices/{deviceId} {
       allow read: if isSignedIn();
 
-      // Klaim, lepas device, dan link cat
       allow update: if isSuperAdmin() &&
                       request.resource.data.diff(resource.data).affectedKeys()
                         .hasOnly(['isClaimed', 'claimedBy', 'claimedAt', 'linkedCatId']);
 
-      // Dokumen device dibuat oleh pengelola sistem dari Firebase Console / Admin SDK
       allow create, delete: if false;
     }
   }
