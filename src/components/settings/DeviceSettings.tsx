@@ -157,8 +157,6 @@ export function DeviceSettings() {
   // Servo test command
   const [testingServo, setTestingServo] = useState(false);
 
-  const deviceDocRef = doc(db, 'devices', `${targetOwnerId}_device`);
-
   // Sync dari Firestore / RTDB device data
   useEffect(() => {
     if (!device) return;
@@ -175,8 +173,10 @@ export function DeviceSettings() {
       if (rtdb && device?.id) {
         await set(ref(rtdb, `devices/${device.id}/calibration/loadCellFactor`), calibrationFactor);
       }
-      // Firestore untuk persistensi (tidak memblokir jika gagal)
-      updateDoc(deviceDocRef, { calibrationFactor }).catch(console.error);
+      // Firestore untuk persistensi — gunakan device.id dari claim system
+      if (device?.id) {
+        updateDoc(doc(db, 'devices', device.id), { calibrationFactor }).catch(console.error);
+      }
       setCalibSaved(true);
       setTimeout(() => setCalibSaved(false), 3000);
     } catch (err) {
@@ -191,9 +191,10 @@ export function DeviceSettings() {
   };
 
   const handleSaveNotif = async () => {
+    if (!device?.id) return;
     setSavingNotif(true);
     try {
-      await updateDoc(deviceDocRef, { notifPrefs });
+      await updateDoc(doc(db, 'devices', device.id), { notifPrefs });
       setNotifSaved(true);
       setTimeout(() => setNotifSaved(false), 3000);
     } catch (err) {

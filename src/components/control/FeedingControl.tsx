@@ -258,72 +258,51 @@ export function FeedingControl() {
       .reduce((sum, l) => sum + (l.amountDispensed ?? 0), 0)
   );
 
-  // ── Alokasi proporsional terpadu ─────────────────────────────────────────────
-  // Past unlogged DAN future active berbagi faktor yang sama berdasarkan sisa (remaining).
-  // Ini menjamin: todayLoggedTotal + pastVirtual + futureAdjusted = dailyTarget (tidak bisa berlebih).
-  // Sebelumnya pastUnloggedAutoTotal pakai s.amount asli, padahal ESP32 sudah terima jumlah
-  // yang dikurangi saat slot itu masih future → virtual overcounting → total melebihi limit.
+  // ── Alokasi proporsional untuk slot masa depan ───────────────────────────────
+  // PENTING: limit harian (todayTotal) HANYA dihitung dari log aktual (todayLoggedTotal).
+  // Slot terjadwal yang waktunya sudah lewat tapi BELUM ada log (ESP32 offline, gagal kirim,
+  // ditolak target, dll.) TIDAK dihitung sebagai "sudah makan" secara virtual — limit baru
+  // bertambah ketika Firestore benar-benar menerima log (dari ESP32 via RTDB scheduledFeedLog,
+  // atau dari pemberian manual di web). Tampilan "✓ Sudah terlewati" pada slot tetap berjalan
+  // berdasarkan waktu (lihat isPastToday di render) — itu murni indikator visual, terpisah dari
+  // perhitungan limit ini.
   const allocationResult = useMemo(() => {
-    const pastUnlogged = smartFeedEnabled
-      ? schedule.filter((s) => s.active !== false && s.time <= currentTimeStr && !deliveredTodaySlots.has(s.time))
-      : [];
     const futureActive = smartFeedEnabled
       ? schedule.filter((s) => s.active !== false && s.time > currentTimeStr).sort((a, b) => a.time.localeCompare(b.time))
       : [];
 
-    const pastAmounts = new Map<string, number>(); // time → jumlah proporsional
-    let pastUnloggedTotal = 0;
     let futureSlots: Array<{ time: string; originalAmount: number; adjustedAmount: number }> | null = null;
 
-    if (dailyTarget > 0) {
-      const P = pastUnlogged.reduce((s, x) => s + x.amount, 0);
+    if (dailyTarget > 0 && futureActive.length > 0) {
       const F = futureActive.reduce((s, x) => s + x.amount, 0);
-      const totalUndelivered = P + F;
-
-      if (totalUndelivered > 0) {
+      if (F > 0) {
         const available = Math.max(0, dailyTarget - todayLoggedTotal);
-        const factor = available / totalUndelivered;
+        const factor = available / F;
 
-        // Past — proporsional
-        let pastAllocated = 0;
-        pastUnlogged.forEach((s, i) => {
-          const isLast = i === pastUnlogged.length - 1 && futureActive.length === 0;
-          const amt = isLast ? Math.max(0, available - pastAllocated) : Math.round(s.amount * factor);
-          pastAllocated += amt;
-          pastAmounts.set(s.time, amt);
+        // Proporsional terhadap sisa kapasitas (slot terakhir menyerap sisa pembulatan)
+        let futureAllocated = 0;
+        const futureSlotsRaw = futureActive.map((s, i) => {
+          const isLast = i === futureActive.length - 1;
+          const adjusted = isLast
+            ? Math.max(0, available - futureAllocated)
+            : Math.round(s.amount * factor);
+          futureAllocated += adjusted;
+          return { time: s.time, originalAmount: s.amount, adjustedAmount: adjusted };
         });
-        pastUnloggedTotal = pastAllocated;
-
-        // Future — proporsional (slot terakhir menyerap sisa pembulatan)
-        if (futureActive.length > 0) {
-          const futureAvailable = Math.max(0, available - pastUnloggedTotal);
-          let futureAllocated = 0;
-          const futureSlotsRaw = futureActive.map((s, i) => {
-            const isLast = i === futureActive.length - 1;
-            const adjusted = isLast
-              ? Math.max(0, futureAvailable - futureAllocated)
-              : Math.round(s.amount * factor);
-            futureAllocated += adjusted;
-            return { time: s.time, originalAmount: s.amount, adjustedAmount: adjusted };
-          });
-          // null jika tidak ada perubahan dari asli
-          const unchanged = futureSlotsRaw.every((s) => s.adjustedAmount === s.originalAmount);
-          futureSlots = unchanged ? null : futureSlotsRaw;
-        }
+        // null jika tidak ada perubahan dari asli
+        const unchanged = futureSlotsRaw.every((s) => s.adjustedAmount === s.originalAmount);
+        futureSlots = unchanged ? null : futureSlotsRaw;
       }
-    } else {
-      // Tidak ada target → pakai jumlah asli
-      pastUnlogged.forEach((s) => pastAmounts.set(s.time, s.amount));
-      pastUnloggedTotal = pastUnlogged.reduce((s, x) => s + x.amount, 0);
     }
 
-    return { pastUnloggedTotal, pastAmounts, futureSlots };
-  }, [dailyTarget, todayLoggedTotal, schedule, currentTimeStr, smartFeedEnabled, deliveredTodaySlots]);
+    return { futureSlots };
+  }, [dailyTarget, todayLoggedTotal, schedule, currentTimeStr, smartFeedEnabled]);
 
-  const pastUnloggedAutoTotal = allocationResult.pastUnloggedTotal;
-  const adjustedFutureSlots   = allocationResult.futureSlots;
+  const adjustedFutureSlots = allocationResult.futureSlots;
 
-  const todayTotal = todayLoggedTotal + pastUnloggedAutoTotal;
+  // Limit harian = murni dari log aktual (manual via web ATAU konfirmasi ESP32 lewat Firebase).
+  // Jam yang lewat tanpa log TIDAK menambah total ini.
+  const todayTotal = todayLoggedTotal;
 
   // Flag Firestore — di-clear oleh useCatData saat profil/target/jadwal berubah
   const isAtDailyLimit = cat?.dailyLimitReachedDate === todayStr;
@@ -1225,20 +1204,15 @@ export function FeedingControl() {
             {schedule.map((slot, index) => {
               const adjSlot = adjustedFutureSlots?.find((a) => a.time === slot.time);
               const deliveredToday = deliveredTodaySlots.has(slot.time);
-              // Slot aktif yang waktunya sudah lewat hari ini → ESP32 pasti sudah mengirim
+              // Slot aktif yang waktunya sudah lewat hari ini → indikator visual saja ("terlewati").
+              // Tidak lagi diasumsikan sudah memotong limit harian — limit hanya naik dari log aktual.
               const isPastToday = slot.active !== false && smartFeedEnabled && slot.time <= currentTimeStr;
               const isDoneToday = deliveredToday || isPastToday;
 
-              // Untuk past unlogged: tampilkan jumlah proporsional (yang diterima ESP32 setelah adjustment)
-              const proportionalPastAmount = (!deliveredToday && isPastToday)
-                ? allocationResult.pastAmounts.get(slot.time)
-                : undefined;
-              const displayAmount = proportionalPastAmount !== undefined
-                ? proportionalPastAmount
-                : (adjSlot?.adjustedAmount ?? slot.amount);
-              const wasAdjusted = proportionalPastAmount !== undefined
-                ? proportionalPastAmount !== slot.amount
-                : (adjSlot !== undefined && adjSlot.adjustedAmount !== slot.amount);
+              // Past-unlogged slot menampilkan porsi jadwal asli (tidak ada lagi adjustment virtual).
+              // Hanya slot masa depan yang bisa "disesuaikan" karena ikut alokasi proporsional sisa target.
+              const displayAmount = adjSlot?.adjustedAmount ?? slot.amount;
+              const wasAdjusted = adjSlot !== undefined && adjSlot.adjustedAmount !== slot.amount;
 
               return editingIndex === index ? (
                 <div

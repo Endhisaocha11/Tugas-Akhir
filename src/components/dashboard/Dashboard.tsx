@@ -1,4 +1,4 @@
-import { useState, useMemo, useEffect } from 'react';
+import { useState, useMemo, useEffect, useRef } from 'react';
 import { Layers, AlertCircle, Weight, Wifi, WifiOff, Settings2, X, Copy, Check, Link2, Clock, TrendingUp, Activity, BarChart3, PieChart as PieIcon, Calendar, ChevronLeft, ChevronRight, Utensils } from 'lucide-react';
 import {
   AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip,
@@ -500,15 +500,21 @@ export function Dashboard() {
 
   // ── Virtual consumption for today (past-time scheduled slots with no actual log) ─
   const [minuteTick, setMinuteTick] = useState(0);
+  const minuteIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   useEffect(() => {
     const now = new Date();
     const msToNextMinute = (60 - now.getSeconds()) * 1000 - now.getMilliseconds();
     const timeout = setTimeout(() => {
       setMinuteTick((t) => t + 1);
-      const interval = setInterval(() => setMinuteTick((t) => t + 1), 60_000);
-      return () => clearInterval(interval);
+      minuteIntervalRef.current = setInterval(() => setMinuteTick((t) => t + 1), 60_000);
     }, msToNextMinute);
-    return () => clearTimeout(timeout);
+    return () => {
+      clearTimeout(timeout);
+      if (minuteIntervalRef.current) {
+        clearInterval(minuteIntervalRef.current);
+        minuteIntervalRef.current = null;
+      }
+    };
   }, [minuteTick]);
 
   const currentTimeStr = useMemo(() => {
