@@ -169,8 +169,8 @@ export function MonitoringSelection() {
           </p>
         </div>
 
-        {/* ── TOP OPTIONS ── */}
-        <div className="grid sm:grid-cols-2 grid-cols-1 gap-5 mb-10">
+        {/* ── TOP OPTIONS — 3 kolom ── */}
+        <div className="grid sm:grid-cols-3 grid-cols-1 gap-5 mb-10">
 
           {/* EDUKASI */}
           <button
@@ -193,6 +193,26 @@ export function MonitoringSelection() {
             </p>
             <span className={`inline-flex items-center gap-1 font-bold text-sm ${showEdu ? 'text-purple-700' : 'text-purple-500'}`}>
               {showEdu ? '▲ Sembunyikan' : '▼ Lihat Materi'}
+            </span>
+          </button>
+
+          {/* SIMULASI KALKULATOR */}
+          <button
+            type="button"
+            onClick={handleGuestMode}
+            className="group text-left rounded-3xl p-7 border-2 border-transparent bg-white hover:border-amber-400 hover:shadow-xl transition-all"
+          >
+            <div className="w-14 h-14 rounded-2xl bg-amber-50 flex items-center justify-center mb-5 text-3xl group-hover:scale-110 transition-transform">
+              🧮
+            </div>
+            <h2 className="text-xl font-black text-gray-900 mb-2">
+              Simulasi Kalkulator
+            </h2>
+            <p className="text-gray-400 text-sm leading-relaxed mb-4">
+              Hitung kebutuhan pakan kucing Anda — gratis, tanpa login, tanpa menyimpan data.
+            </p>
+            <span className="inline-flex items-center gap-1 font-bold text-sm text-amber-600 group-hover:text-amber-700">
+              Coba Sekarang →
             </span>
           </button>
 
@@ -236,21 +256,6 @@ export function MonitoringSelection() {
                   <p className="text-xs text-gray-500 leading-relaxed">{art.desc}</p>
                 </div>
               ))}
-            </div>
-            <div className="px-6 pb-6">
-              <div className="bg-amber-50 border border-amber-200 rounded-2xl p-5 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
-                <div>
-                  <p className="font-black text-amber-900">Ingin menghitung kebutuhan pakan kucing Anda?</p>
-                  <p className="text-sm text-amber-700 mt-1">Gunakan Simulasi Feeding Calculator — gratis, tanpa menyimpan data.</p>
-                </div>
-                <button
-                  type="button"
-                  onClick={handleGuestMode}
-                  className="shrink-0 px-6 py-3 bg-amber-700 text-white font-black rounded-2xl hover:bg-amber-800 transition-colors text-sm whitespace-nowrap"
-                >
-                  🧮 Coba Simulasi
-                </button>
-              </div>
             </div>
           </div>
         )}
