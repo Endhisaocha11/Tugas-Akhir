@@ -163,7 +163,7 @@ export function FeedingControl() {
   const [feedingAmount, setFeedingAmount] = useState(5);
   const [portionInputStr, setPortionInputStr] = useState('5');
   const [isFeeding, setIsFeeding] = useState(false);
-  const [feedResult, setFeedResult] = useState<'success' | 'timeout' | 'error' | null>(null);
+  const [feedResult, setFeedResult] = useState<'success' | 'timeout' | 'error' | 'cancelled' | null>(null);
   const [feedPhase, setFeedPhase] = useState<'sending' | 'waiting'>('sending');
   const [lastFedAmount, setLastFedAmount] = useState(0);
   const [showConfirm, setShowConfirm] = useState(false);
@@ -467,7 +467,8 @@ export function FeedingControl() {
     setFeedPhase('sending');
 
     let wasConfirmed = false;
-    let actualDispensed = feedingAmount; // default: pakai requested jika tidak ada konfirmasi timbangan
+    let wasCancelled = false;
+    let actualDispensed = feedingAmount;
 
     try {
       const initialWeight = selectedDevice?.currentWeightOnScale ?? 0;
@@ -484,18 +485,26 @@ export function FeedingControl() {
 
       setFeedPhase('waiting');
 
-      // 2. Tunggu berat mangkuk bertambah sebagai konfirmasi ESP32 dispensing
-      // Tidak ada batas waktu — menunggu sampai berat terdeteksi naik ATAU user cancel.
+      // 2. Tunggu berat mangkuk bertambah — tanpa batas waktu.
+      // User bisa klik Batalkan; saat itu kirim cancel command ke ESP32.
       const THRESHOLD = Math.max(5, feedingAmount * 0.4);
 
       wasConfirmed = rtdb
         ? await new Promise<boolean>((resolve) => {
             let unsubscribe: (() => void) | null = null;
 
-            // Simpan fungsi cancel ke ref agar tombol Cancel bisa memanggilnya
-            cancelFeedRef.current = () => {
+            cancelFeedRef.current = async () => {
               unsubscribe?.();
               cancelFeedRef.current = null;
+              wasCancelled = true;
+              // Kirim perintah cancel ke ESP32 via RTDB agar servo berhenti
+              if (rtdb) {
+                await set(ref(rtdb, `devices/${deviceId}/command`), {
+                  type: 'cancel',
+                  status: 'pending',
+                  requestedAt: Date.now(),
+                }).catch(console.error);
+              }
               resolve(false);
             };
 
@@ -503,7 +512,6 @@ export function FeedingControl() {
             unsubscribe = onValue(weightRef, (snapshot) => {
               const current = (snapshot.val() as number) ?? 0;
               if (current >= initialWeight + THRESHOLD) {
-                // Catat berat aktual yang berhasil masuk ke mangkuk
                 actualDispensed = Math.max(1, Math.round(current - initialWeight));
                 unsubscribe?.();
                 cancelFeedRef.current = null;
@@ -513,21 +521,23 @@ export function FeedingControl() {
           })
         : false;
 
-      // 3. Catat log ke Firestore (untuk riwayat & analitik)
-      const logId = `${targetOwnerId}_${Date.now()}`;
-      await setDoc(doc(db, 'feedingLogs', logId), {
-        id: logId,
-        catId: cat?.id ?? '',
-        deviceId,
-        timestamp: Date.now(),
-        amountRequested: feedingAmount,
-        amountDispensed: actualDispensed,
-        status: wasConfirmed ? 'success' : 'warning',
-        notes: 'manual',
-      });
+      // 3. Hanya catat log jika TIDAK dibatalkan user
+      if (!wasCancelled) {
+        const logId = `${targetOwnerId}_${Date.now()}`;
+        await setDoc(doc(db, 'feedingLogs', logId), {
+          id: logId,
+          catId: cat?.id ?? '',
+          deviceId,
+          timestamp: Date.now(),
+          amountRequested: feedingAmount,
+          amountDispensed: actualDispensed,
+          status: wasConfirmed ? 'success' : 'warning',
+          notes: 'manual',
+        });
+      }
 
       setLastFedAmount(feedingAmount);
-      setFeedResult(wasConfirmed ? 'success' : 'timeout');
+      setFeedResult(wasCancelled ? 'cancelled' : wasConfirmed ? 'success' : 'timeout');
       setShowConfirm(false);
     } catch {
       setFeedResult('error');
@@ -1116,6 +1126,8 @@ export function FeedingControl() {
                   'flex items-start gap-3 px-5 py-4 rounded-2xl text-base font-semibold border-2',
                   feedResult === 'success'
                     ? 'bg-green-50 border-green-300 text-green-700'
+                    : feedResult === 'cancelled'
+                    ? 'bg-gray-50 border-gray-300 text-gray-700'
                     : feedResult === 'timeout'
                     ? 'bg-yellow-50 border-yellow-300 text-yellow-700'
                     : 'bg-red-50 border-red-200 text-red-700'
@@ -1123,6 +1135,8 @@ export function FeedingControl() {
               >
                 {feedResult === 'success' ? (
                   <CheckCircle2 className="w-6 h-6 shrink-0 mt-0.5 text-green-500" />
+                ) : feedResult === 'cancelled' ? (
+                  <BanIcon className="w-6 h-6 shrink-0 mt-0.5 text-gray-400" />
                 ) : feedResult === 'timeout' ? (
                   <AlertTriangle className="w-6 h-6 shrink-0 mt-0.5 text-yellow-500" />
                 ) : (
@@ -1135,6 +1149,13 @@ export function FeedingControl() {
                       <p className="text-sm font-medium mt-1 text-green-600">
                         <span className="font-black text-green-700">{lastFedAmount}g</span> terdeteksi masuk ke mangkuk{' '}
                         <span className="font-black">{selectedDevice?.name ?? `Feeder ESP ${selectedDeviceId === devices[1]?.id ? 2 : 1}`}</span>.
+                      </p>
+                    </>
+                  ) : feedResult === 'cancelled' ? (
+                    <>
+                      <p className="font-black text-gray-700">🚫 Perintah dibatalkan</p>
+                      <p className="text-sm font-medium mt-1 text-gray-500">
+                        Perintah {lastFedAmount}g telah dikirim cancel ke perangkat. Servo akan berhenti dan pemberian tidak dicatat.
                       </p>
                     </>
                   ) : feedResult === 'timeout' ? (
