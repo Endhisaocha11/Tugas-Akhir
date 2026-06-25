@@ -174,7 +174,6 @@ export function FeedingControl() {
   // Edit mode
   const [editingIndex, setEditingIndex] = useState<number | null>(null);
   const [editTime, setEditTime] = useState('');
-  const [editAmount, setEditAmount] = useState(0);
   const [editError, setEditError] = useState('');
   const [savingSchedule, setSavingSchedule] = useState(false);
 
@@ -239,6 +238,12 @@ export function FeedingControl() {
 
   // Slot times (HH:MM) yang sudah dikirim otomatis hari ini (ada log aktual-nya).
   // Pakai todayCountFrom + catId agar sinkron persis dengan todayLoggedTotal.
+  //
+  // PENTING: setiap log dicocokkan ke SATU slot TERDEKAT saja (bukan "semua slot
+  // dalam radius 15 menit"). Kalau dipasang ke semua slot dalam radius, menggeser
+  // jam sebuah slot ke dekat jam slot lain yang sudah terkirim hari itu akan membuat
+  // slot yang baru digeser ikut salah ditandai "sudah terkirim" (jadi abu-abu),
+  // padahal log itu sebenarnya milik slot lain.
   const deliveredTodaySlots = useMemo(() => {
     const s = new Set<string>();
     if (!cat?.id) return s;
@@ -247,10 +252,17 @@ export function FeedingControl() {
       .forEach((l) => {
         const d = new Date(l.timestamp);
         const logMin = d.getHours() * 60 + d.getMinutes();
+        let bestTime: string | null = null;
+        let bestDist = Infinity;
         schedule.forEach((sl) => {
           const [slH, slM] = sl.time.split(':').map(Number);
-          if (Math.abs(logMin - (slH * 60 + slM)) <= 15) s.add(sl.time);
+          const dist = Math.abs(logMin - (slH * 60 + slM));
+          if (dist <= 15 && dist < bestDist) {
+            bestDist = dist;
+            bestTime = sl.time;
+          }
         });
+        if (bestTime) s.add(bestTime);
       });
     return s;
   }, [feedingLogs, schedule, todayCountFrom, cat?.id]);
@@ -429,7 +441,6 @@ export function FeedingControl() {
   const startEdit = (index: number) => {
     setEditingIndex(index);
     setEditTime(schedule[index].time);
-    setEditAmount(schedule[index].amount);
     setEditError('');
   };
 
@@ -443,10 +454,16 @@ export function FeedingControl() {
       return;
     }
 
+    // PENTING: hanya `time` & `label` yang diubah dari sini — `amount` basis
+    // TIDAK ditulis ulang. Form edit ini cuma untuk ganti jam; porsi basis tetap
+    // dipertahankan apa adanya, dan adjustment otomatis (allocationResult) akan
+    // otomatis terhitung ulang sendiri berdasarkan jam baru. Kalau `amount`
+    // ditulis ulang di sini, porsi yang sudah disesuaikan otomatis akan
+    // tertimpa balik ke nilai basis/asli setiap kali jam diedit.
     const updated = schedule
       .map((s, i) =>
         i === editingIndex
-          ? { ...s, time: editTime, amount: editAmount, label: getSlotLabel(editTime) }
+          ? { ...s, time: editTime, label: getSlotLabel(editTime) }
           : s
       )
       .sort((a, b) => a.time.localeCompare(b.time));
@@ -1269,7 +1286,7 @@ export function FeedingControl() {
                       />
                     </div>
                   </div>
-                  <p className="text-xs text-gray-400">Porsi: <span className="font-bold text-gray-600">{schedule[editingIndex ?? 0]?.amount ?? editAmount}g</span> (tidak dapat diubah dari sini)</p>
+                  <p className="text-xs text-gray-400">Porsi: <span className="font-bold text-gray-600">{displayAmount}g</span> (tidak dapat diubah dari sini)</p>
                   {editError && <p className="text-xs text-red-600 font-semibold">{editError}</p>}
                   <div className="flex gap-3 justify-end">
                     <button
