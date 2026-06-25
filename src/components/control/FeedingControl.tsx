@@ -236,8 +236,10 @@ export function FeedingControl() {
   const profileUpdatedAt = cat?.profileUpdatedAt ?? 0;
   const todayCountFrom = Math.max(todayStartMs, profileUpdatedAt);
 
-  // Slot times (HH:MM) yang sudah dikirim otomatis hari ini (ada log aktual-nya).
-  // Pakai todayCountFrom + catId agar sinkron persis dengan todayLoggedTotal.
+  // Slot times (HH:MM) yang sudah dikirim otomatis hari ini (ada log aktual-nya),
+  // dipetakan ke jumlah AKTUAL yang terkirim (amountDispensed) — bukan jumlah dari
+  // alokasi proporsional. Pakai todayCountFrom + catId agar sinkron persis dengan
+  // todayLoggedTotal.
   //
   // PENTING: setiap log dicocokkan ke SATU slot TERDEKAT saja (bukan "semua slot
   // dalam radius 15 menit"). Kalau dipasang ke semua slot dalam radius, menggeser
@@ -245,8 +247,8 @@ export function FeedingControl() {
   // slot yang baru digeser ikut salah ditandai "sudah terkirim" (jadi abu-abu),
   // padahal log itu sebenarnya milik slot lain.
   const deliveredTodaySlots = useMemo(() => {
-    const s = new Set<string>();
-    if (!cat?.id) return s;
+    const m = new Map<string, number>();
+    if (!cat?.id) return m;
     feedingLogs
       .filter((l) => l.notes === 'scheduled' && l.catId === cat.id && l.timestamp >= todayCountFrom)
       .forEach((l) => {
@@ -262,9 +264,9 @@ export function FeedingControl() {
             bestTime = sl.time;
           }
         });
-        if (bestTime) s.add(bestTime);
+        if (bestTime) m.set(bestTime, l.amountDispensed ?? 0);
       });
-    return s;
+    return m;
   }, [feedingLogs, schedule, todayCountFrom, cat?.id]);
 
   const todayLoggedTotal = Math.round(
@@ -273,45 +275,53 @@ export function FeedingControl() {
       .reduce((sum, l) => sum + (l.amountDispensed ?? 0), 0)
   );
 
-  // ── Alokasi proporsional untuk slot masa depan ───────────────────────────────
+  // ── Alokasi proporsional untuk slot yang BELUM terkirim (future + past-unlogged) ──
   // PENTING: limit harian (todayTotal) HANYA dihitung dari log aktual (todayLoggedTotal).
   // Slot terjadwal yang waktunya sudah lewat tapi BELUM ada log (ESP32 offline, gagal kirim,
   // ditolak target, dll.) TIDAK dihitung sebagai "sudah makan" secara virtual — limit baru
   // bertambah ketika Firestore benar-benar menerima log (dari ESP32 via RTDB scheduledFeedLog,
-  // atau dari pemberian manual di web). Tampilan "✓ Sudah terlewati" pada slot tetap berjalan
-  // berdasarkan waktu (lihat isPastToday di render) — itu murni indikator visual, terpisah dari
-  // perhitungan limit ini.
+  // atau dari pemberian manual di web).
+  //
+  // PENTING #2: slot yang sudah LEWAT tapi belum ada log-nya HARUS ikut dialokasikan
+  // proporsional bersama slot-slot future, bukan hanya slot future saja. Kalau hanya
+  // slot future yang dialokasikan, begitu jam sebuah slot tercapai/lewat ia langsung
+  // "menghilang" dari peta adjustment dan tampilan/kiriman ke ESP32 jatuh balik ke porsi
+  // asli (amount) — padahal device belum sempat mengeksekusinya. Slot past-unlogged harus
+  // tetap memegang porsi yang sudah disesuaikan sampai benar-benar ada log untuknya.
   const allocationResult = useMemo(() => {
-    const futureActive = smartFeedEnabled
-      ? schedule.filter((s) => s.active !== false && s.time > currentTimeStr).sort((a, b) => a.time.localeCompare(b.time))
+    // Semua slot aktif hari ini yang belum punya log (future ATAU past-unlogged).
+    const pendingActive = smartFeedEnabled
+      ? schedule
+          .filter((s) => s.active !== false && !deliveredTodaySlots.has(s.time))
+          .sort((a, b) => a.time.localeCompare(b.time))
       : [];
 
-    let futureSlots: Array<{ time: string; originalAmount: number; adjustedAmount: number }> | null = null;
+    let pendingSlots: Array<{ time: string; originalAmount: number; adjustedAmount: number }> | null = null;
 
-    if (dailyTarget > 0 && futureActive.length > 0) {
-      const F = futureActive.reduce((s, x) => s + x.amount, 0);
+    if (dailyTarget > 0 && pendingActive.length > 0) {
+      const F = pendingActive.reduce((s, x) => s + x.amount, 0);
       if (F > 0) {
         const available = Math.max(0, dailyTarget - todayLoggedTotal);
         const factor = available / F;
 
         // Proporsional terhadap sisa kapasitas (slot terakhir menyerap sisa pembulatan)
-        let futureAllocated = 0;
-        const futureSlotsRaw = futureActive.map((s, i) => {
-          const isLast = i === futureActive.length - 1;
+        let pendingAllocated = 0;
+        const pendingSlotsRaw = pendingActive.map((s, i) => {
+          const isLast = i === pendingActive.length - 1;
           const adjusted = isLast
-            ? Math.max(0, available - futureAllocated)
+            ? Math.max(0, available - pendingAllocated)
             : Math.round(s.amount * factor);
-          futureAllocated += adjusted;
+          pendingAllocated += adjusted;
           return { time: s.time, originalAmount: s.amount, adjustedAmount: adjusted };
         });
         // null jika tidak ada perubahan dari asli
-        const unchanged = futureSlotsRaw.every((s) => s.adjustedAmount === s.originalAmount);
-        futureSlots = unchanged ? null : futureSlotsRaw;
+        const unchanged = pendingSlotsRaw.every((s) => s.adjustedAmount === s.originalAmount);
+        pendingSlots = unchanged ? null : pendingSlotsRaw;
       }
     }
 
-    return { futureSlots };
-  }, [dailyTarget, todayLoggedTotal, schedule, currentTimeStr, smartFeedEnabled]);
+    return { futureSlots: pendingSlots };
+  }, [dailyTarget, todayLoggedTotal, schedule, deliveredTodaySlots, smartFeedEnabled]);
 
   const adjustedFutureSlots = allocationResult.futureSlots;
 
@@ -439,6 +449,10 @@ export function FeedingControl() {
 
   // ── Edit slot ────────────────────────────────────────────────────────────
   const startEdit = (index: number) => {
+    // Slot yang sudah terkirim hari ini (ada log aktual) tidak boleh diedit lagi —
+    // jamnya sudah final, mengubahnya sekarang tidak ada artinya untuk hari ini
+    // dan berisiko membingungkan riwayat/limit harian.
+    if (deliveredTodaySlots.has(schedule[index].time)) return;
     setEditingIndex(index);
     setEditTime(schedule[index].time);
     setEditError('');
@@ -1254,17 +1268,25 @@ export function FeedingControl() {
           {/* Slot list */}
           <div className="flex-1 overflow-y-auto space-y-4 min-h-0">
             {schedule.map((slot, index) => {
+              const deliveredAmount = deliveredTodaySlots.get(slot.time);
+              const deliveredToday = deliveredAmount !== undefined;
               const adjSlot = adjustedFutureSlots?.find((a) => a.time === slot.time);
-              const deliveredToday = deliveredTodaySlots.has(slot.time);
               // Slot aktif yang waktunya sudah lewat hari ini → indikator visual saja ("terlewati").
               // Tidak lagi diasumsikan sudah memotong limit harian — limit hanya naik dari log aktual.
               const isPastToday = slot.active !== false && smartFeedEnabled && slot.time <= currentTimeStr;
               const isDoneToday = deliveredToday || isPastToday;
 
-              // Past-unlogged slot menampilkan porsi jadwal asli (tidak ada lagi adjustment virtual).
-              // Hanya slot masa depan yang bisa "disesuaikan" karena ikut alokasi proporsional sisa target.
-              const displayAmount = adjSlot?.adjustedAmount ?? slot.amount;
-              const wasAdjusted = adjSlot !== undefined && adjSlot.adjustedAmount !== slot.amount;
+              // - Slot yang SUDAH terkirim (ada log): tampilkan jumlah AKTUAL yang dikirim
+              //   (amountDispensed), bukan jumlah dari alokasi proporsional.
+              // - Slot yang BELUM terkirim (future atau past-unlogged): tampilkan porsi yang
+              //   sudah disesuaikan otomatis (adjSlot) jika ada — porsi ini tetap dipertahankan
+              //   sampai slot benar-benar terkirim, tidak jatuh balik ke porsi asli saat lewat.
+              const displayAmount = deliveredToday
+                ? Math.round(deliveredAmount)
+                : (adjSlot?.adjustedAmount ?? slot.amount);
+              const wasAdjusted = deliveredToday
+                ? Math.round(deliveredAmount) !== slot.amount
+                : (adjSlot !== undefined && adjSlot.adjustedAmount !== slot.amount);
 
               return editingIndex === index ? (
                 <div
@@ -1369,9 +1391,16 @@ export function FeedingControl() {
                     </button>
                     <button
                       type="button"
-                      aria-label="Edit slot"
+                      aria-label={deliveredToday ? 'Jam sudah terkirim, tidak dapat diedit' : 'Edit slot'}
                       onClick={() => startEdit(index)}
-                      className="w-12 h-12 rounded-2xl flex items-center justify-center bg-white border border-gray-100 text-gray-300 hover:text-blue-500 hover:border-blue-200 hover:bg-blue-50 transition-all"
+                      disabled={deliveredToday}
+                      title={deliveredToday ? 'Sudah terkirim hari ini — jam tidak dapat diubah' : undefined}
+                      className={cn(
+                        'w-12 h-12 rounded-2xl flex items-center justify-center border transition-all',
+                        deliveredToday
+                          ? 'bg-gray-50 border-gray-100 text-gray-200 cursor-not-allowed'
+                          : 'bg-white border-gray-100 text-gray-300 hover:text-blue-500 hover:border-blue-200 hover:bg-blue-50'
+                      )}
                     >
                       <Pencil className="w-5 h-5" />
                     </button>
