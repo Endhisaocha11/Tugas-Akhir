@@ -168,6 +168,9 @@ export function FeedingControl() {
   const [lastFedAmount, setLastFedAmount] = useState(0);
   const [showConfirm, setShowConfirm] = useState(false);
 
+  // Cancel manual feed
+  const cancelFeedRef = useRef<(() => void) | null>(null);
+
   // Edit mode
   const [editingIndex, setEditingIndex] = useState<number | null>(null);
   const [editTime, setEditTime] = useState('');
@@ -482,16 +485,19 @@ export function FeedingControl() {
       setFeedPhase('waiting');
 
       // 2. Tunggu berat mangkuk bertambah sebagai konfirmasi ESP32 dispensing
-      const TIMEOUT_MS = 30_000;
+      // Tidak ada batas waktu — menunggu sampai berat terdeteksi naik ATAU user cancel.
       const THRESHOLD = Math.max(5, feedingAmount * 0.4);
 
       wasConfirmed = rtdb
         ? await new Promise<boolean>((resolve) => {
             let unsubscribe: (() => void) | null = null;
-            const timer = setTimeout(() => {
+
+            // Simpan fungsi cancel ke ref agar tombol Cancel bisa memanggilnya
+            cancelFeedRef.current = () => {
               unsubscribe?.();
+              cancelFeedRef.current = null;
               resolve(false);
-            }, TIMEOUT_MS);
+            };
 
             const weightRef = ref(rtdb, `devices/${deviceId}/weight`);
             unsubscribe = onValue(weightRef, (snapshot) => {
@@ -499,8 +505,8 @@ export function FeedingControl() {
               if (current >= initialWeight + THRESHOLD) {
                 // Catat berat aktual yang berhasil masuk ke mangkuk
                 actualDispensed = Math.max(1, Math.round(current - initialWeight));
-                clearTimeout(timer);
                 unsubscribe?.();
+                cancelFeedRef.current = null;
                 resolve(true);
               }
             });
@@ -526,6 +532,7 @@ export function FeedingControl() {
     } catch {
       setFeedResult('error');
     } finally {
+      cancelFeedRef.current = null;
       setIsFeeding(false);
       setTimeout(() => setFeedResult(null), wasConfirmed ? 5000 : 8000);
     }
@@ -1017,7 +1024,14 @@ export function FeedingControl() {
                   {feedPhase === 'waiting' ? (
                     <>
                       <p className="font-black text-blue-800 text-base">Menunggu pakan tertuang...</p>
-                      <p className="text-sm text-blue-500 mt-0.5">Memverifikasi berat mangkuk (maks 30 detik)</p>
+                      <p className="text-sm text-blue-500 mt-0.5">Memverifikasi berat mangkuk — menunggu hingga pakan terdeteksi</p>
+                      <button
+                        type="button"
+                        onClick={() => cancelFeedRef.current?.()}
+                        className="mt-3 px-5 py-2 rounded-2xl border border-blue-300 bg-white text-blue-600 text-sm font-bold hover:bg-blue-50 transition-colors"
+                      >
+                        Batalkan
+                      </button>
                     </>
                   ) : (
                     <>
