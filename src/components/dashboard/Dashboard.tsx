@@ -469,19 +469,28 @@ export function Dashboard() {
   const [weeklyMode, setWeeklyMode] = useState<WeeklyMode>('7d');
 
   const todayStr = localDateStr();
-  const profileUpdatedAt = cat?.profileUpdatedAt ?? 0;
+
+  // Waktu profil kucing aktif ini dibuat/diupdate terakhir.
+  // Digunakan sebagai batas bawah untuk SEMUA data log yang ditampilkan di dashboard,
+  // sehingga ketika profil diganti, kalender/chart/progress mulai bersih dari nol.
+  const profileActiveSince = cat?.profileUpdatedAt ?? 0;
 
   const todayStartMs = useMemo(() => {
     const d = new Date();
     d.setHours(0, 0, 0, 0);
     return d.getTime();
   }, []);
-  const todayCountFrom = Math.max(todayStartMs, profileUpdatedAt);
+  // todayCountFrom: progress hari ini dihitung sejak awal hari ATAU sejak profil diaktifkan
+  // (mana yang lebih baru), agar ganti profil tidak melanjutkan counter profil sebelumnya.
+  const todayCountFrom = Math.max(todayStartMs, profileActiveSince);
 
-  // Saring hanya log milik kucing aktif saat ini.
-  // feedingLogs dari useCatData sudah disaring per ownerId, tapi bisa
-  // mengandung log dari profil kucing lama jika catId berubah.
-  const catLogs = feedingLogs.filter((l) => l.catId === cat?.id);
+  // catLogs: log yang benar-benar milik profil AKTIF saat ini.
+  //   1. catId cocok dengan profil terbaru (cat?.id)
+  //   2. timestamp >= profileActiveSince → log sebelum profil ini dibuat dibuang
+  //      (mencegah data profil lama muncul di kalender, chart, dan progress)
+  const catLogs = feedingLogs.filter(
+    (l) => l.catId === cat?.id && l.timestamp >= profileActiveSince
+  );
 
   // Log aktif berdasarkan filter yang dipilih
   const activeLogs = useMemo(() => {

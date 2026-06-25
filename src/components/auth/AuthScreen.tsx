@@ -6,7 +6,7 @@ import { auth, db } from '../../lib/firebase';
 import { UserRole } from '../../types';
 import { Cat, ArrowRight, Mail, Lock, Eye, EyeOff, ShieldCheck, User, Zap, AlertTriangle } from 'lucide-react';
 
-const ALLOWED_DOMAINS = ['gmail.com', 'yahoo.com', 'outlook.com', 'hotmail.com', 'icloud.com', 'mail.ugm.ac.id'];
+const ALLOWED_DOMAINS = ['gmail.com', 'yahoo.com', 'outlook.com', 'hotmail.com', 'icloud.com', 'ugm.ac.id'];
 
 function getEmailDomain(email: string): string {
   const parts = email.trim().split('@');
