@@ -278,9 +278,7 @@ export function Analytics() {
 
   // Filter logs by profileUpdatedAt — sama seperti Dashboard agar chart reset saat profil berubah
   const profileUpdatedAt = cat?.profileUpdatedAt ?? 0;
-  const filteredLogs = profileUpdatedAt > 0
-    ? feedingLogs.filter((l) => l.timestamp >= profileUpdatedAt)
-    : feedingLogs;
+  const filteredLogs = feedingLogs.filter((l) => l.catId === cat?.id);
 
   // ── Last 7 days line data (gram/hari) ─────────────────
   const now = Date.now();

@@ -488,9 +488,7 @@ export function Dashboard() {
   //   1. catId cocok dengan profil terbaru (cat?.id)
   //   2. timestamp >= profileActiveSince → log sebelum profil ini dibuat dibuang
   //      (mencegah data profil lama muncul di kalender, chart, dan progress)
-  const catLogs = feedingLogs.filter(
-    (l) => l.catId === cat?.id && l.timestamp >= profileActiveSince
-  );
+ const catLogs = feedingLogs.filter((l) => l.catId === cat?.id);
 
   // Log aktif berdasarkan filter yang dipilih
   const activeLogs = useMemo(() => {
