@@ -152,8 +152,20 @@ export function useCatData(): CatData {
     const schedLogRef = ref(rtdb, `devices/${claimedDeviceId}/scheduledFeedLog`);
     const unsubSchedLog = onValue(schedLogRef, async (snap) => {
       if (!snap.exists()) return;
-      const data = snap.val() as { amount: number; slot: string; ts: number; processed?: boolean };
-      if (data.processed === true || !data.amount) return;
+      const data = snap.val() as {
+        amount: number;
+        requestedAmount?: number;
+        slot: string;
+        ts: number;
+        processed?: boolean;
+      };
+      // Guard pakai requestedAmount (target, dijamin > 0 oleh firmware) — BUKAN
+      // amount (berat aktual tertimbang), karena amount kini sah bernilai 0
+      // saat dispensing benar-benar gagal (servo macet/stok habis dll). Memakai
+      // amount sebagai guard akan diam-diam membuang event kegagalan tersebut,
+      // padahal justru event itu yang paling penting untuk tercatat di riwayat.
+      const requested = data.requestedAmount ?? data.amount;
+      if (data.processed === true || !requested) return;
       if (isProcessingRef.current) return; // cegah race condition StrictMode
       isProcessingRef.current = true;
 
@@ -169,13 +181,23 @@ export function useCatData(): CatData {
 
         // Tandai processed dulu agar listener kedua (StrictMode) tidak ikut proses
         await set(ref(rtdb, `devices/${claimedDeviceId}/scheduledFeedLog/processed`), true);
+        // `amount` = berat AKTUAL yang benar-benar tertimbang ESP32 (selisih
+        // sebelum/sesudah dispensing) — sama prinsipnya dengan manual feed yang
+        // mengukur dari devices/{id}/weight. `requested` = target sebelum
+        // dispensing. Status 'success' hanya jika aktual cukup dekat ke target
+        // (ambang sama dengan threshold konfirmasi di manual feed); kalau jauh
+        // (servo macet, stok habis, dll.) ditandai 'warning' agar kelihatan di
+        // riwayat — bukan diam-diam dianggap sukses penuh.
+        const actual = data.amount ?? 0;
+        const threshold = Math.max(5, requested * 0.4);
+        const isCloseEnough = actual >= requested - threshold;
         await addDoc(collection(db, 'feedingLogs'), {
           catId,
           deviceId:        claimedDeviceId,
           timestamp:       Date.now(),
-          amountRequested: data.amount,
-          amountDispensed: data.amount,
-          status:          'success',
+          amountRequested: requested,
+          amountDispensed: actual,
+          status:          isCloseEnough ? 'success' : 'warning',
           notes:           'scheduled',
         });
         processedSlotsRef.current.set(slotKey, today);
