@@ -1051,7 +1051,7 @@ export function Education() {
               },
               {
                 icon: TrendingUp,
-                metric: '98,97%',
+                metric: '98,31%',
                 label: 'Akurasi HX711',
                 desc: 'Setelah kalibrasi, berdasarkan jurnal Medika Teknika (UMY, 2022)',
                 color: 'text-green-400',
