@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import {
   BarChart3,
   TrendingUp,
@@ -26,6 +26,7 @@ import {
   ReferenceLine,
 } from 'recharts';
 import { motion, AnimatePresence } from 'motion/react';
+import { track } from '@vercel/analytics';
 import { useCatData } from '../../lib/useCatData';
 import { cn } from '../../lib/utils';
 import type { FeedingLog } from '../../types';
@@ -275,6 +276,11 @@ function FeedingCalendarAnalytics({ feedingLogs, dailyTarget }: { feedingLogs: F
 
 export function Analytics() {
   const { cat, feedingLogs, loading } = useCatData();
+
+  // Track halaman analytics saat pertama mount
+  useEffect(() => {
+    track('view_analytics', { catId: cat?.id ?? 'unknown' });
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Filter logs by profileUpdatedAt — sama seperti Dashboard agar chart reset saat profil berubah
   const profileUpdatedAt = cat?.profileUpdatedAt ?? 0;

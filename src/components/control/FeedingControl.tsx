@@ -1,4 +1,5 @@
 import { useState, useEffect, useMemo, useRef } from 'react';
+import { track } from '@vercel/analytics';
 import { motion } from 'motion/react';
 import {
   Utensils, Clock, AlertTriangle, Play, Settings2,
@@ -568,7 +569,17 @@ export function FeedingControl() {
       }
 
       setLastFedAmount(feedingAmount);
-      setFeedResult(wasCancelled ? 'cancelled' : wasConfirmed ? 'success' : 'timeout');
+      const result = wasCancelled ? 'cancelled' : wasConfirmed ? 'success' : 'timeout';
+
+      // Track event ke Vercel Analytics
+      track('manual_feed', {
+        result,
+        amountRequested: feedingAmount,
+        amountDispensed: actualDispensed,
+        catId: cat?.id ?? 'unknown',
+      });
+
+      setFeedResult(result);
       setShowConfirm(false);
     } catch {
       setFeedResult('error');

@@ -1,4 +1,5 @@
 import { useState, useMemo, useEffect, useRef } from 'react';
+import { track } from '@vercel/analytics';
 import { Layers, AlertCircle, Weight, Wifi, WifiOff, Settings2, X, Copy, Check, Link2, Clock, TrendingUp, Activity, BarChart3, PieChart as PieIcon, Calendar, ChevronLeft, ChevronRight, Utensils } from 'lucide-react';
 import {
   AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip,
@@ -447,6 +448,11 @@ export function Dashboard() {
   const { profile } = useAuth();
   const isAdmin = profile?.role === UserRole.SUPER_ADMIN;
   const { cat, device, feedingLogs, targetOwnerId, loading } = useCatData();
+
+  // Track halaman dashboard saat pertama mount
+  useEffect(() => {
+    track('view_dashboard', { role: profile?.role ?? 'unknown' });
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Connect device modal
   const [showConnectModal, setShowConnectModal] = useState(false);
@@ -1085,7 +1091,7 @@ export function Dashboard() {
                 {activeLogs.length} sesi
               </span>
             </div>
-            <div className="h-52 min-w-0">
+            <div className="h-52">
               <ResponsiveContainer width="100%" height="100%">
                 <AreaChart data={feedingDynamics}>
                   <defs>
@@ -1121,7 +1127,7 @@ export function Dashboard() {
                 {Math.round(analyticsBarData.reduce((s, d) => s + d.grams, 0))}g total
               </span>
             </div>
-            <div className="h-52 min-w-0">
+            <div className="h-52">
               <ResponsiveContainer width="100%" height="100%">
                 <BarChart data={analyticsBarData} barCategoryGap="30%">
                   <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#F1F5F9" />
@@ -1249,7 +1255,7 @@ export function Dashboard() {
                 ))}
               </div>
             </div>
-            <div className="h-60 min-w-0">
+            <div className="h-60">
               <ResponsiveContainer width="100%" height="100%">
                 <BarChart data={consumptionChartData} barCategoryGap="35%">
                   <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#F1F5F9" />

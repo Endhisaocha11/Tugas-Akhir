@@ -1,4 +1,5 @@
 import React, { useState, useRef, useEffect, ChangeEvent } from "react";
+import { track } from '@vercel/analytics';
 import { doc, getDoc, setDoc, updateDoc, collection, query, where, getDocs } from "firebase/firestore";
 import { db } from "../../lib/firebase";
 import { useAuth } from "../../lib/AuthContext";
@@ -507,6 +508,12 @@ export default function OnboardingFlow({
       // ── 4. Tandai onboarding selesai di user profile ──────────────────────────
       await updateDoc(doc(db, 'users', user.uid), {
         onboardingCompleted: true,
+      });
+
+      // Track onboarding selesai
+      track('onboarding_complete', {
+        isAdmin,
+        catName: form.name,
       });
 
       // ── 5. Link cat ke device (jika admin sudah klaim device) ────────────────

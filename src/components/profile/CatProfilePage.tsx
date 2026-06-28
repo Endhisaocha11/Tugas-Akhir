@@ -1,4 +1,5 @@
 import { useMemo, useRef, useState } from 'react';
+import { track } from '@vercel/analytics';
 import { motion, AnimatePresence } from 'motion/react';
 import {
   Scale, Heart, Activity, ShieldCheck, Calculator, Utensils,
@@ -215,17 +216,14 @@ function ProfileHistoryCard({
               <p className="text-[10px] text-gray-400">total pakan</p>
             </div>
             {!isCurrent && isAdmin && onRestore && (
-              // div bukan button — karena parent sudah <button>, tidak boleh nested
-              <div
-                role="button"
-                tabIndex={0}
+              <button
+                type="button"
                 onClick={(e) => { e.stopPropagation(); onRestore(); }}
-                onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.stopPropagation(); onRestore(); } }}
-                className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-amber-500 hover:bg-amber-400 text-white text-xs font-black transition-colors shadow-amber-200 shadow-sm cursor-pointer"
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-amber-500 hover:bg-amber-400 text-white text-xs font-black transition-colors shadow-amber-200 shadow-sm"
               >
                 <RotateCcw className="w-3 h-3" />
                 <span className="hidden sm:inline">Pakai Profil Ini</span>
-              </div>
+              </button>
             )}
             <ChevronDown className={cn(
               'w-5 h-5 text-gray-400 transition-transform duration-200',
@@ -452,6 +450,14 @@ export function CatProfilePage() {
         dailyAdjustments:      null,
         updatedAt:             new Date().toISOString(),
       });
+
+      // Track event ganti profil kucing
+      track('switch_cat_profile', {
+        catId:       cat.id,
+        catName:     cat.name,
+        profileName: pendingRestore.name,
+      });
+
       setPendingRestore(null);
     } catch {
       setRestoreError('Gagal menerapkan profil. Periksa koneksi dan coba lagi.');
