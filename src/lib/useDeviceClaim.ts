@@ -1,4 +1,4 @@
-import { doc, getDoc, runTransaction, serverTimestamp, collection, query, where, getDocs, writeBatch } from 'firebase/firestore';
+import { doc, getDoc, runTransaction, serverTimestamp, writeBatch } from 'firebase/firestore';
 import { db } from './firebase';
 
 /**
@@ -51,7 +51,8 @@ export async function claimDevice(deviceId: string, userId: string): Promise<voi
 
 /**
  * Melepas device dari admin.
- * Reset onboardingCompleted ke false agar admin setup ulang jika claim device baru.
+ * Hanya reset claimedDeviceId — profil kucing & onboarding TETAP tersimpan
+ * sehingga setelah klaim device baru langsung masuk dashboard.
  */
 export async function releaseDevice(deviceId: string, userId: string): Promise<void> {
   await runTransaction(db, async (transaction) => {
@@ -69,9 +70,9 @@ export async function releaseDevice(deviceId: string, userId: string): Promise<v
       linkedCatId: null,
     });
 
+    // Hanya reset claimedDeviceId — onboardingCompleted TIDAK diubah
     transaction.update(userRef, {
-      claimedDeviceId:     null,
-      onboardingCompleted: false, // reset agar routing kembali ke DeviceSelectionScreen
+      claimedDeviceId: null,
     });
   });
 }
@@ -105,10 +106,9 @@ export async function releaseAllDevices(userId: string, deviceIds: string[]): Pr
     count++;
   });
 
-  // Pastikan user saat ini selalu di-reset (walau tidak ada di query)
+  // Hanya reset user yang sedang login (tidak boleh update doc user lain per Firestore rules)
   batch.update(doc(db, 'users', userId), {
-    claimedDeviceId:     null,
-    onboardingCompleted: false, // pastikan user yang melepas juga kembali ke DeviceSelectionScreen
+    claimedDeviceId: null,
   });
 
   await batch.commit();
