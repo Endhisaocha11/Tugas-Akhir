@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { useEffect } from 'react';
+import { useEffect, lazy, Suspense } from 'react';
 import { AuthProvider, useAuth } from './lib/AuthContext';
 import { DeviceProvider } from './lib/DeviceContext';
 import { Cpu, Wifi, WifiOff, Database, Lock, CheckCircle2, AlertTriangle } from 'lucide-react';
@@ -8,18 +8,20 @@ import { CatLoader } from './components/ui/CatLoader';
 import { ErrorPage } from './components/ui/ErrorPage';
 
 import { AuthScreen } from './components/auth/AuthScreen';
-import OnboardingFlow from './components/onboarding/OnboardingFlow';
 import { DashboardLayout } from './components/layout/DashboardLayout';
-import { Dashboard } from './components/dashboard/Dashboard';
-import { FeedingHistory } from './components/history/FeedingHistory';
-import { Education } from './components/education/Education';
-import { DeviceSettings } from './components/settings/DeviceSettings';
-import { UserSettings } from './components/settings/UserSettings';
-import { FeedingControl } from './components/control/FeedingControl';
-import { CatProfilePage } from './components/profile/CatProfilePage';
-import { Analytics } from './components/analytics/Analytics';
-import { MonitoringSelection } from './components/onboarding/MonitoringSelection';
-import { Notifications } from './components/notifications/Notifications';
+
+// Lazy load semua halaman berat — hanya di-download saat dibutuhkan
+const OnboardingFlow = lazy(() => import('./components/onboarding/OnboardingFlow'));
+const MonitoringSelection = lazy(() => import('./components/onboarding/MonitoringSelection').then(m => ({ default: m.MonitoringSelection })));
+const Dashboard = lazy(() => import('./components/dashboard/Dashboard').then(m => ({ default: m.Dashboard })));
+const FeedingHistory = lazy(() => import('./components/history/FeedingHistory').then(m => ({ default: m.FeedingHistory })));
+const Education = lazy(() => import('./components/education/Education').then(m => ({ default: m.Education })));
+const DeviceSettings = lazy(() => import('./components/settings/DeviceSettings').then(m => ({ default: m.DeviceSettings })));
+const UserSettings = lazy(() => import('./components/settings/UserSettings').then(m => ({ default: m.UserSettings })));
+const FeedingControl = lazy(() => import('./components/control/FeedingControl').then(m => ({ default: m.FeedingControl })));
+const CatProfilePage = lazy(() => import('./components/profile/CatProfilePage').then(m => ({ default: m.CatProfilePage })));
+const Analytics = lazy(() => import('./components/analytics/Analytics').then(m => ({ default: m.Analytics })));
+const Notifications = lazy(() => import('./components/notifications/Notifications').then(m => ({ default: m.Notifications })));
 import { UserRole, DeviceStatus } from './types';
 import { cn } from './lib/utils';
 import { useAllDevices, getDeviceStatus } from './lib/useDevices';
@@ -38,21 +40,21 @@ function DeviceCard({
   onClaim: (deviceId: string) => void;
   claiming: boolean;
 }) {
-  const status   = getDeviceStatus(device, myUid);
+  const status = getDeviceStatus(device, myUid);
   const isOnline = device.isOnline ?? false;
-  const stock    = device.foodStockLevel ?? 0;
-  const label    = device.deviceName ?? device.name ?? device.id;
+  const stock = device.foodStockLevel ?? 0;
+  const label = device.deviceName ?? device.name ?? device.id;
 
   const isAvailable = status === 'available';
-  const isUsed      = status === 'used';
+  const isUsed = status === 'used';
 
   const stockColor = stock > 50 ? 'bg-green-400' : stock > 20 ? 'bg-yellow-400' : 'bg-red-400';
 
   const statusBadge = {
-    available: { text: 'Tersedia',           cls: 'bg-green-500/15 text-green-400 border-green-500/30' },
-    used:      { text: 'Sedang Digunakan',   cls: 'bg-red-500/15 text-red-400 border-red-500/30' },
-    connected: { text: 'Milikmu — Online',   cls: 'bg-amber-500/15 text-amber-400 border-amber-500/30' },
-    offline:   { text: 'Milikmu — Offline',  cls: 'bg-gray-500/15 text-gray-400 border-gray-500/30' },
+    available: { text: 'Tersedia', cls: 'bg-green-500/15 text-green-400 border-green-500/30' },
+    used: { text: 'Sedang Digunakan', cls: 'bg-red-500/15 text-red-400 border-red-500/30' },
+    connected: { text: 'Milikmu — Online', cls: 'bg-amber-500/15 text-amber-400 border-amber-500/30' },
+    offline: { text: 'Milikmu — Offline', cls: 'bg-gray-500/15 text-gray-400 border-gray-500/30' },
   }[status];
 
   return (
@@ -61,7 +63,7 @@ function DeviceCard({
       className={cn(
         'relative p-6 rounded-3xl border-2 space-y-5 transition-colors',
         isAvailable ? 'bg-gray-900 border-amber-500/40 hover:border-amber-400' : '',
-        isUsed      ? 'bg-gray-900/50 border-gray-800 opacity-60' : '',
+        isUsed ? 'bg-gray-900/50 border-gray-800 opacity-60' : '',
       )}
     >
       {/* Status badge */}
@@ -138,8 +140,8 @@ function DeviceSelectionScreen() {
   const { user } = useAuth();
   const { devices, loading } = useAllDevices();
   const [claimingId, setClaimingId] = useState<string | null>(null);
-  const [error, setError]           = useState<string | null>(null);
-  const [success, setSuccess]       = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [success, setSuccess] = useState(false);
 
   async function handleClaim(deviceId: string) {
     if (!user) return;
@@ -245,7 +247,7 @@ function DeviceSelectionScreen() {
 function AppContent() {
   const { user, profile, loading } = useAuth();
   const [currentTab, setCurrentTab] = useState('dashboard');
-  const [loadError, setLoadError]   = useState(false);
+  const [loadError, setLoadError] = useState(false);
   const [profileError, setProfileError] = useState(false);
 
   // Timeout untuk Firebase auth + Firestore awal (saat app pertama load)
@@ -268,14 +270,14 @@ function AppContent() {
       setLoadError(false);
       setProfileError(false);
       window.location.reload();
-    }}/>;
+    }} />;
   }
 
-  if (loading) return <CatLoader/>;
+  if (loading) return <CatLoader />;
 
   if (!user) return <AuthScreen />;
 
-  if (!profile) return <CatLoader text="Memuat profil kamu..."/>;
+  if (!profile) return <CatLoader text="Memuat profil kamu..." />;
 
   const isAdmin = profile.role === UserRole.SUPER_ADMIN;
 
@@ -286,7 +288,11 @@ function AppContent() {
 
   // ── Admin: sudah klaim device, belum setup profil kucing → onboarding ─────────
   if (isAdmin && !profile.onboardingCompleted) {
-    return <OnboardingFlow isAdmin={true} />;
+    return (
+      <Suspense fallback={<CatLoader />}>
+        <OnboardingFlow isAdmin={true} />
+      </Suspense>
+    );
   }
 
   if (isAdmin) {
@@ -296,15 +302,15 @@ function AppContent() {
         onTabChange={setCurrentTab}
         userRole={profile.role?.toUpperCase() as UserRole}
       >
-        {renderContent()}
+        <Suspense fallback={<CatLoader />}>
+          {renderContent()}
+        </Suspense>
       </DashboardLayout>
     );
   }
 
   // ── User flow ─────────────────────────────────────────────────────────────────
 
-  // Auto-restore dari Firestore jika localStorage kosong (perangkat baru / login ulang setelah popup clear).
-  // Dilewati jika user baru saja klik "Ganti Admin" (flag sessionStorage skipAutoRestore).
   if (!localStorage.getItem('appMode') && profile?.monitoringAdminId && !sessionStorage.getItem('skipAutoRestore')) {
     localStorage.setItem('appMode', 'monitor');
     localStorage.setItem('selectedAdminId', profile.monitoringAdminId);
@@ -315,9 +321,17 @@ function AppContent() {
 
   const appMode = localStorage.getItem('appMode');
 
-  if (!appMode) return <MonitoringSelection />;
+  if (!appMode) return (
+    <Suspense fallback={<CatLoader />}>
+      <MonitoringSelection />
+    </Suspense>
+  );
 
-  if (appMode === 'guest') return <OnboardingFlow isAdmin={false} />;
+  if (appMode === 'guest') return (
+    <Suspense fallback={<CatLoader />}>
+      <OnboardingFlow isAdmin={false} />
+    </Suspense>
+  );
 
   if (appMode === 'monitor') {
     return (
@@ -326,12 +340,18 @@ function AppContent() {
         onTabChange={setCurrentTab}
         userRole={profile.role}
       >
-        {renderContent()}
+        <Suspense fallback={<CatLoader />}>
+          {renderContent()}
+        </Suspense>
       </DashboardLayout>
     );
   }
 
-  return <MonitoringSelection />;
+  return (
+    <Suspense fallback={<CatLoader />}>
+      <MonitoringSelection />
+    </Suspense>
+  );
 
   function renderContent() {
     switch (currentTab) {
