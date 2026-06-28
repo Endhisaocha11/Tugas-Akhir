@@ -1085,7 +1085,7 @@ export function Dashboard() {
                 {activeLogs.length} sesi
               </span>
             </div>
-            <div className="h-52">
+            <div className="h-52 min-w-0">
               <ResponsiveContainer width="100%" height="100%">
                 <AreaChart data={feedingDynamics}>
                   <defs>
@@ -1121,7 +1121,7 @@ export function Dashboard() {
                 {Math.round(analyticsBarData.reduce((s, d) => s + d.grams, 0))}g total
               </span>
             </div>
-            <div className="h-52">
+            <div className="h-52 min-w-0">
               <ResponsiveContainer width="100%" height="100%">
                 <BarChart data={analyticsBarData} barCategoryGap="30%">
                   <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#F1F5F9" />
@@ -1249,7 +1249,7 @@ export function Dashboard() {
                 ))}
               </div>
             </div>
-            <div className="h-60">
+            <div className="h-60 min-w-0">
               <ResponsiveContainer width="100%" height="100%">
                 <BarChart data={consumptionChartData} barCategoryGap="35%">
                   <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#F1F5F9" />

@@ -127,18 +127,23 @@ export function DeviceSettings() {
     }
   };
 
-  const handleReleaseAllDevices = async () => {
-    if (!user) return;
-    setReleasingAll(true);
-    setReleaseAllError(null);
-    try {
-      const ids = allSystemDevices.map((d) => d.id);
-      await releaseAllDevices(user.uid, ids);
-    } catch {
-      setReleaseAllError('Gagal melepas semua perangkat. Periksa koneksi dan coba lagi.');
-      setReleasingAll(false);
-    }
-  };
+const handleReleaseAllDevices = async () => {
+  if (!user) return;
+  setReleasingAll(true);
+  setReleaseAllError(null);
+  try {
+    const ids = allSystemDevices.map((d) => d.id);
+    console.log('[Release All] device ids:', ids);
+    const count = await releaseAllDevices(user.uid, ids);
+    console.log('[Release All] success, count:', count);
+    // Tambah ini untuk paksa cek profile terbaru:
+    console.log('[Release All] menunggu onSnapshot AuthContext...');
+  } catch (e) {
+    console.error('[Release All] error:', e);
+    setReleaseAllError('Gagal melepas semua perangkat. Periksa koneksi dan coba lagi.');
+    setReleasingAll(false);
+  }
+};
 
   // Calibration factor — angka untuk kirim, string untuk input agar bisa diketik bebas
   const [calibrationFactor, setCalibrationFactor] = useState<number>(420);

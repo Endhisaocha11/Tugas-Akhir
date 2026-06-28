@@ -105,15 +105,6 @@ export async function releaseAllDevices(userId: string, deviceIds: string[]): Pr
     count++;
   });
 
-  // Reset semua user yang punya claimedDeviceId salah satu dari list ini
-  const userSnaps = await getDocs(
-    query(collection(db, 'users'), where('claimedDeviceId', 'in', deviceIds.slice(0, 10)))
-  );
-  userSnaps.forEach((u) => batch.update(u.ref, {
-    claimedDeviceId:     null,
-    onboardingCompleted: false, // reset agar mereka kembali ke DeviceSelectionScreen
-  }));
-
   // Pastikan user saat ini selalu di-reset (walau tidak ada di query)
   batch.update(doc(db, 'users', userId), {
     claimedDeviceId:     null,

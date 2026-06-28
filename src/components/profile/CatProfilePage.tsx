@@ -215,14 +215,17 @@ function ProfileHistoryCard({
               <p className="text-[10px] text-gray-400">total pakan</p>
             </div>
             {!isCurrent && isAdmin && onRestore && (
-              <button
-                type="button"
+              // div bukan button — karena parent sudah <button>, tidak boleh nested
+              <div
+                role="button"
+                tabIndex={0}
                 onClick={(e) => { e.stopPropagation(); onRestore(); }}
-                className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-amber-500 hover:bg-amber-400 text-white text-xs font-black transition-colors shadow-amber-200 shadow-sm"
+                onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.stopPropagation(); onRestore(); } }}
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-amber-500 hover:bg-amber-400 text-white text-xs font-black transition-colors shadow-amber-200 shadow-sm cursor-pointer"
               >
                 <RotateCcw className="w-3 h-3" />
                 <span className="hidden sm:inline">Pakai Profil Ini</span>
-              </button>
+              </div>
             )}
             <ChevronDown className={cn(
               'w-5 h-5 text-gray-400 transition-transform duration-200',
