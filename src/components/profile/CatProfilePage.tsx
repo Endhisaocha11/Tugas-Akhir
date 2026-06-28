@@ -1,10 +1,9 @@
 import { useMemo, useRef, useState } from 'react';
-import { track } from '@vercel/analytics';
 import { motion, AnimatePresence } from 'motion/react';
 import {
   Scale, Heart, Activity, ShieldCheck, Calculator, Utensils,
   ChevronRight, AlertTriangle, CheckCircle2, ChevronDown, Camera, Loader2, Search,
-  RotateCcw, X,
+  RotateCcw, X, PawPrint,
 } from 'lucide-react';
 import { doc, updateDoc, setDoc, getDoc } from 'firebase/firestore';
 import { db } from '../../lib/firebase';
@@ -450,14 +449,6 @@ export function CatProfilePage() {
         dailyAdjustments:      null,
         updatedAt:             new Date().toISOString(),
       });
-
-      // Track event ganti profil kucing
-      track('switch_cat_profile', {
-        catId:       cat.id,
-        catName:     cat.name,
-        profileName: pendingRestore.name,
-      });
-
       setPendingRestore(null);
     } catch {
       setRestoreError('Gagal menerapkan profil. Periksa koneksi dan coba lagi.');
@@ -649,6 +640,19 @@ export function CatProfilePage() {
 
   return (
     <div className="space-y-5 md:space-y-10">
+
+      {/* ── PAGE TITLE ── */}
+      <div className="flex flex-col sm:flex-row sm:items-end justify-between gap-3">
+        <div>
+          <h2 className="text-2xl sm:text-3xl font-black text-gray-900 flex items-center gap-2.5">
+            <PawPrint className="w-6 h-6 sm:w-8 sm:h-8 text-amber-500 shrink-0" />
+            Cat Profile
+          </h2>
+          <p className="text-gray-400 text-sm mt-1">
+            Kelola profil dan data nutrisi kucingmu.
+          </p>
+        </div>
+      </div>
 
       {/* ── PROFILE HEADER ── */}
       <div className="flex flex-col md:flex-row items-center md:items-start gap-6 md:gap-10 p-5 md:p-10 bg-white rounded-[40px] border border-amber-100 shadow-sm relative overflow-hidden">
