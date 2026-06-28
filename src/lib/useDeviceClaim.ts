@@ -70,7 +70,8 @@ export async function releaseDevice(deviceId: string, userId: string): Promise<v
     });
 
     transaction.update(userRef, {
-      claimedDeviceId: null,
+      claimedDeviceId:     null,
+      onboardingCompleted: false, // reset agar routing kembali ke DeviceSelectionScreen
     });
   });
 }
@@ -108,10 +109,16 @@ export async function releaseAllDevices(userId: string, deviceIds: string[]): Pr
   const userSnaps = await getDocs(
     query(collection(db, 'users'), where('claimedDeviceId', 'in', deviceIds.slice(0, 10)))
   );
-  userSnaps.forEach((u) => batch.update(u.ref, { claimedDeviceId: null }));
+  userSnaps.forEach((u) => batch.update(u.ref, {
+    claimedDeviceId:     null,
+    onboardingCompleted: false, // reset agar mereka kembali ke DeviceSelectionScreen
+  }));
 
   // Pastikan user saat ini selalu di-reset (walau tidak ada di query)
-  batch.update(doc(db, 'users', userId), { claimedDeviceId: null });
+  batch.update(doc(db, 'users', userId), {
+    claimedDeviceId:     null,
+    onboardingCompleted: false, // pastikan user yang melepas juga kembali ke DeviceSelectionScreen
+  });
 
   await batch.commit();
   return count;
