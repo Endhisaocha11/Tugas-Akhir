@@ -27,7 +27,8 @@ async function compressImageToBase64(file: File, maxSize = 300): Promise<string>
 // ======================================
 // TYPES
 // ======================================
-type ActivityLevel = 'low' | 'normal' | 'high';
+// BARU
+type ActivityLevel = 'very_low' | 'low' | 'normal' | 'high' | 'very_high';
 
 interface FormState {
   name: string;
@@ -45,6 +46,7 @@ interface CalculateTargetsProps {
   weight: number;
   isSterilized: boolean;
   gender: string;
+  age: number;  
   bodyCondition: number;
   kiloCaloriesPerKg?: number;
   activity?: ActivityLevel;
@@ -77,9 +79,11 @@ function cn(...classes: (string | boolean | undefined)[]) {
  * GENERATE CSV FROM ONBOARDING DATA
  */
 const ACTIVITY_LABEL: Record<string, string> = {
-  low: 'Kurang Aktif (indoor)',
-  normal: 'Normal',
-  high: 'Aktif (outdoor/playful)',
+  very_low:  'Sangat Tidak Aktif',
+  low:       'Tidak Aktif (Sedentary)',
+  normal:    'Normal',
+  high:      'Aktif',
+  very_high: 'Sangat Aktif',
 };
 
 function generateCSV(data: any): string {
@@ -130,48 +134,50 @@ function generateCSV(data: any): string {
 // CALCULATION
 // ======================================
 function calculateTargets({
-  weight,
-  isSterilized,
-  gender,
-  bodyCondition,
-  kiloCaloriesPerKg = 4000,
-  activity = 'normal',
+  weight, isSterilized, gender, age,   // ← tambah age
+  bodyCondition, kiloCaloriesPerKg = 4000, activity = 'normal',
 }: CalculateTargetsProps): CalculateTargetsResult {
 
   const rer = 70 * Math.pow(weight, 0.75);
 
-  // Sterilisasi
-  const Fm = isSterilized ? 1.2 : 1.4;
+  // Fm — NRC 2006 + WSAVA 2021: 7 kategori (umur + steril)
+  let Fm: number;
+  if (age < 0.5)       Fm = 3.0;                          // Kitten 0–6 bln
+  else if (age < 1)    Fm = 2.0;                          // Kitten 6–12 bln
+  else if (age <= 7)   Fm = isSterilized ? 1.2 : 1.6;    // Dewasa
+  else if (age <= 12)  Fm = isSterilized ? 1.1 : 1.4;    // Senior
+  else                 Fm = 0.8;                           // Geriatri >12 th
 
-  // Gender
-  const Fg = gender === "male" ? 0.95 : 1.0;
+  // Fg — Wolfsheimer 1994
+  const Fg = gender === 'male' ? 1.0 : 0.9;
 
-  // Body Condition
-  const Fo = bodyCondition <= 2 ? 1.1 : bodyCondition >= 7 ? 0.85 : 1.0;
+  // Fo — WSAVA 2021 skala BCS 1–5
+  const Fo = bodyCondition <= 2 ? 1.2
+           : bodyCondition === 3 ? 1.0
+           : bodyCondition === 4 ? 0.9
+           : 0.8; // BCS 5 obesitas
 
-  // Aktivitas (Fa): kurang aktif 0.8 | normal 1.0 | aktif 1.2
-  const Fa: number = activity === 'low' ? 0.8 : activity === 'high' ? 1.2 : 1.0;
+  // Fa — Hand et al. 2010, 5 level
+  const FA_MAP: Record<string, number> = {
+    very_low: 0.8, low: 0.9, normal: 1.0, high: 1.1, very_high: 1.3,
+  };
+  const Fa = FA_MAP[activity ?? 'normal'] ?? 1.0;
 
   const dailyCalorieTarget = rer * Fm * Fg * Fo * Fa;
   const kcalPerGram = kiloCaloriesPerKg / 1000;
-  const dailyGramTarget = dailyCalorieTarget / kcalPerGram;
 
   return {
     dailyCalorieTarget: Math.round(dailyCalorieTarget),
-    dailyGramTarget: Math.round(dailyGramTarget),
-    Fm,
-    Fg,
-    Fo,
-    Fa,
+    dailyGramTarget: Math.round(dailyCalorieTarget / kcalPerGram),
+    Fm, Fg, Fo, Fa,
   };
 }
 
 function getAutoBodyCondition(weight: number): number {
-  if (weight < 2.5) return 2;
-  if (weight >= 2.5 && weight <= 3.2) return 3;
-  if (weight >= 3.3 && weight <= 4.5) return 5;
-  if (weight >= 4.6 && weight <= 6) return 7;
-  return 9;
+  if (weight < 2.5)  return 1; // sangat kurus
+  if (weight <= 3.5) return 3; // ideal
+  if (weight <= 5.0) return 4; // gemuk
+  return 5;                     // obesitas
 }
 
 function getAgeCategory(age: number): { label: string; sub: string } {
@@ -181,11 +187,10 @@ function getAgeCategory(age: number): { label: string; sub: string } {
 }
 
 function getBodyLabel(bc: number): string {
-  if (bc <= 2) return "Sangat Kurus";
-  if (bc <= 4) return "Kurus";
-  if (bc <= 5) return "Normal";
-  if (bc <= 7) return "Overweight";
-  return "Obesitas";
+  if (bc <= 2) return 'Sangat Kurus – Kurus';
+  if (bc === 3) return 'Ideal';
+  if (bc === 4) return 'Gemuk';
+  return 'Obesitas';
 }
 
 
@@ -319,14 +324,15 @@ export default function OnboardingFlow({
     }, 700);
   }, [form.name, user]);
 
-  const targets = calculateTargets({
-    weight: form.weight,
-    isSterilized: form.isSterilized,
-    gender: form.gender,
-    bodyCondition: form.bodyCondition,
-    kiloCaloriesPerKg: form.foodEnergy,
-    activity: form.activity,
-  });
+ const targets = calculateTargets({
+  weight:           form.weight,
+  isSterilized:     form.isSterilized,
+  gender:           form.gender,
+  age:              form.age,   // ← TAMBAH
+  bodyCondition:    form.bodyCondition,
+  kiloCaloriesPerKg: form.foodEnergy,
+  activity:         form.activity,
+});
 
   const ageCategory = getAgeCategory(form.age);
 
@@ -1065,7 +1071,7 @@ export default function OnboardingFlow({
                           key={i}
                           className={cn(
                             "w-3 h-3 rounded-full",
-                            i <= Math.round(form.bodyCondition / 2)
+                            i <= form.bodyCondition
                               ? "bg-amber-500"
                               : "bg-gray-200"
                           )}
@@ -1194,7 +1200,7 @@ export default function OnboardingFlow({
                 </div>
 
                 {/* WARNING */}
-                {form.bodyCondition >= 7 && (
+                {form.bodyCondition >= 5 && (
                   <div className="mt-8 bg-blue-50 border border-blue-100 rounded-3xl p-6 flex gap-4">
 
                     <div className="w-12 h-12 rounded-full bg-blue-100 flex items-center justify-center shrink-0 text-xl">
@@ -1221,9 +1227,11 @@ export default function OnboardingFlow({
                   </p>
                   <div className="grid md:grid-cols-3 grid-cols-1 gap-4">
                     {([
-                      { val: 'low' as ActivityLevel, icon: '🛋️', label: 'Kurang Aktif', sub: 'Indoor, jarang bergerak atau tidur banyak.' },
-                      { val: 'normal' as ActivityLevel, icon: '🐾', label: 'Normal', sub: 'Seimbang antara istirahat dan bermain.' },
-                      { val: 'high' as ActivityLevel, icon: '⚡', label: 'Sangat Aktif', sub: 'Outdoor, sering berlari dan bermain.' },
+{ val: 'very_low',  icon: '😴', label: 'Sangat Tidak Aktif', sub: 'Hampir tidak bergerak, tidur terus.' },
+{ val: 'low',       icon: '🛋️', label: 'Tidak Aktif',        sub: 'Jarang bermain, banyak rebahan.' },
+{ val: 'normal',    icon: '🐾', label: 'Normal',              sub: 'Bermain & bergerak rutin setiap hari.' },
+{ val: 'high',      icon: '⚡', label: 'Aktif',               sub: 'Sering berlari, bermain, eksplorasi.' },
+{ val: 'very_high', icon: '🔥', label: 'Sangat Aktif',        sub: 'Bergerak intens hampir sepanjang hari.' },
                     ] as { val: ActivityLevel; icon: string; label: string; sub: string }[]).map(({ val, icon, label, sub }) => (
                       <button
                         key={val}
@@ -1250,7 +1258,7 @@ export default function OnboardingFlow({
                     ))}
                   </div>
                   <p className="text-xs text-gray-400 mt-3">
-                    Faktor aktivitas (Fa): Kurang Aktif = 0.8 · Normal = 1.0 · Sangat Aktif = 1.2
+                    Faktor aktivitas (Fa): Sangat Tidak Aktif = 0.8 · Tidak Aktif = 0.9 · Normal = 1.0 · Aktif = 1.1 · Sangat Aktif = 1.3
                   </p>
                 </div>
 
