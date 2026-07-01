@@ -108,7 +108,7 @@ export function FeedingHistory() {
   const todayStartMs = todayStart.getTime();
 
   const profileUpdatedAt = cat?.profileUpdatedAt ?? 0;
-  const todayCountFrom = Math.max(todayStartMs, profileUpdatedAt);
+  void todayStartMs; // dipertahankan untuk kemungkinan filter "hari ini" di masa depan
 
   const toDateKey = (ts: number) => {
     const d = new Date(ts);
@@ -119,10 +119,13 @@ export function FeedingHistory() {
     const dates = new Set<string>();
     feedingLogs.forEach((log) => {
       if (cat?.id && log.catId !== cat.id) return;
+      // Hanya tanggal yang punya log milik profil kucing yang SEDANG aktif —
+      // log dari sebelum profil ini disimpan (profil lama, mis. "Momo") diabaikan.
+      if (log.timestamp < profileUpdatedAt) return;
       dates.add(toDateKey(log.timestamp));
     });
     return Array.from(dates).sort().reverse();
-  }, [feedingLogs, cat?.id]);
+  }, [feedingLogs, cat?.id, profileUpdatedAt]);
 
   const formatDateLabel = (dateStr: string) => {
     const d = new Date(dateStr + 'T00:00:00');
@@ -144,6 +147,13 @@ export function FeedingHistory() {
     return feedingLogs
       .filter((log) => {
         if (cat?.id && log.catId !== cat.id) return false;
+        // Batasi ke log milik profil kucing yang SEDANG aktif saja.
+        // Karena 1 owner hanya punya 1 dokumen cat (id tetap sama saat ganti
+        // profil), catId TIDAK cukup untuk membedakan profil lama vs baru —
+        // profileUpdatedAt (waktu profil aktif ini disimpan) yang jadi batasnya.
+        // Contoh: profil "Momo" aktif jam 01–09, diganti ke "Yudi" jam 10 →
+        // hanya log timestamp >= jam 10 (profileUpdatedAt profil Yudi) yang tampil.
+        if (log.timestamp < profileUpdatedAt) return false;
         const ts1s = Math.floor(log.timestamp / 1_000) * 1_000;
         const key = `${log.catId}|${ts1s}|${log.amountRequested}|${log.notes}|${log.status}`;
         if (seen.has(key)) return false;
@@ -197,7 +207,7 @@ export function FeedingHistory() {
         isMatch: Number((log.amountDispensed ?? 0).toFixed(1)) >= log.amountRequested * 0.9,
         timestamp: log.timestamp,
       }));
-  }, [feedingLogs, profileUpdatedAt, filterDate, filterType, filterStatus, search, cat?.name, todayCountFrom]);
+  }, [feedingLogs, cat?.id, profileUpdatedAt, filterDate, filterType, filterStatus, search, cat?.name]);
 
   if (loading) {
     return (

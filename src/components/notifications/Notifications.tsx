@@ -13,10 +13,10 @@ import { UserRole } from '../../types';
 
 function formatRelative(ts: number): string {
   const diff = Date.now() - ts;
-  if (diff < 60_000)      return 'Baru saja';
-  if (diff < 3_600_000)   return `${Math.floor(diff / 60_000)} mnt lalu`;
-  if (diff < 7_200_000)   return '1 jam lalu';
-  if (diff < 86_400_000)  return `${Math.floor(diff / 3_600_000)} jam lalu`;
+  if (diff < 60_000) return 'Baru saja';
+  if (diff < 3_600_000) return `${Math.floor(diff / 60_000)} mnt lalu`;
+  if (diff < 7_200_000) return '1 jam lalu';
+  if (diff < 86_400_000) return `${Math.floor(diff / 3_600_000)} jam lalu`;
   return new Date(ts).toLocaleDateString('id-ID', { day: '2-digit', month: 'short' });
 }
 
@@ -25,17 +25,17 @@ function formatClock(ts: number): string {
 }
 
 function getDateLabel(ts: number): string {
-  const d     = new Date(ts);
+  const d = new Date(ts);
   const today = new Date();
   today.setHours(0, 0, 0, 0);
   const yest = new Date(today.getTime() - 86_400_000);
   d.setHours(0, 0, 0, 0);
   if (d.getTime() === today.getTime()) return 'Hari Ini';
-  if (d.getTime() === yest.getTime())  return 'Kemarin';
+  if (d.getTime() === yest.getTime()) return 'Kemarin';
   return new Date(ts).toLocaleDateString('id-ID', { weekday: 'long', day: 'numeric', month: 'long' });
 }
 
-const isManual    = (n?: string) => n === 'manual';
+const isManual = (n?: string) => n === 'manual';
 const isScheduled = (n?: string) => n === 'scheduled' || !n;
 
 // ── Types ─────────────────────────────────────────────────────────────────────
@@ -74,7 +74,7 @@ function AlertBanner({
   const inner = (
     <>
       {isErr
-        ? <XCircle      className="w-5 h-5 text-red-500 shrink-0" />
+        ? <XCircle className="w-5 h-5 text-red-500 shrink-0" />
         : <AlertTriangle className="w-5 h-5 text-amber-500 shrink-0" />}
       <div className="flex-1 min-w-0">
         <p className={cn('font-black text-sm', isErr ? 'text-red-700' : 'text-amber-700')}>
@@ -116,19 +116,19 @@ function FeedCard({
   isAdmin: boolean;
   onClick?: () => void;
 }) {
-  const manual    = isManual(log.notes);
-  const ok        = log.status === 'success';
-  const warn      = log.status === 'warning';
+  const manual = isManual(log.notes);
+  const ok = log.status === 'success';
+  const warn = log.status === 'warning';
 
   const StatusIcon = ok ? CheckCircle2 : warn ? AlertTriangle : XCircle;
   const statusColor = ok ? 'text-green-500' : warn ? 'text-amber-500' : 'text-red-500';
 
-  const TriggerIcon  = manual ? Utensils : Zap;
+  const TriggerIcon = manual ? Utensils : Zap;
   const triggerColor = manual ? 'text-blue-500' : 'text-amber-500';
-  const triggerBg    = manual ? 'bg-blue-50'    : 'bg-amber-50';
-  const triggerLabel = manual ? 'Manual'         : 'Otomatis';
-  const triggerTxt   = manual ? 'text-blue-600'  : 'text-amber-600';
-  const triggerBadge = manual ? 'bg-blue-100'    : 'bg-amber-100';
+  const triggerBg = manual ? 'bg-blue-50' : 'bg-amber-50';
+  const triggerLabel = manual ? 'Manual' : 'Otomatis';
+  const triggerTxt = manual ? 'text-blue-600' : 'text-amber-600';
+  const triggerBadge = manual ? 'bg-blue-100' : 'bg-amber-100';
 
   const cardBg = isNew
     ? (ok ? 'bg-green-50' : warn ? 'bg-amber-50/60' : 'bg-red-50')
@@ -137,16 +137,16 @@ function FeedCard({
     ? 'border-green-100' : warn ? 'border-amber-100' : 'border-red-100';
 
   const title = ok
-    ? (manual ? 'Feeding Manual Berhasil'    : 'Feeding Otomatis Berhasil')
+    ? (manual ? 'Feeding Manual Berhasil' : 'Feeding Otomatis Berhasil')
     : warn
-    ? (manual ? 'Feeding Manual Kurang Akurat' : 'Feeding Otomatis Kurang Akurat')
-    : (manual ? 'Feeding Manual Gagal'       : 'Feeding Otomatis Gagal');
+      ? (manual ? 'Feeding Manual Kurang Akurat' : 'Feeding Otomatis Kurang Akurat')
+      : (manual ? 'Feeding Manual Gagal' : 'Feeding Otomatis Gagal');
 
   const body = ok
     ? `${log.amountDispensed}g diberikan — sesuai target ${log.amountRequested}g`
     : warn
-    ? `${log.amountDispensed}g diberikan — target ${log.amountRequested}g (toleransi terlampaui)`
-    : `Target ${log.amountRequested}g tidak tercapai — periksa stok & servo`;
+      ? `${log.amountDispensed}g diberikan — target ${log.amountRequested}g (toleransi terlampaui)`
+      : `Target ${log.amountRequested}g tidak tercapai — periksa stok & servo`;
 
   const cardClass = cn(
     'w-full text-left rounded-2xl border p-4 flex items-start gap-3 transition-all',
@@ -276,22 +276,30 @@ export function Notifications({ onNavigate }: { onNavigate?: (tab: string) => vo
   }
 
   // ── Feeding logs (7 hari terakhir, terbaru dulu) ─────────────────────────
+  // Batasi hanya ke log milik profil kucing yang SEDANG aktif. Satu owner hanya
+  // punya 1 dokumen cat (id tetap sama saat ganti profil), jadi catId saja
+  // tidak cukup untuk membedakan profil lama vs baru — profileUpdatedAt (waktu
+  // profil aktif ini disimpan) dipakai sebagai batas bawah, sama seperti logika
+  // di FeedingHistory & CatProfilePage. Contoh: profil "Momo" aktif jam 01–09,
+  // diganti ke "Yudi" jam 10 → notifikasi hanya menampilkan log >= jam 10.
   const sevenDaysAgo = Date.now() - 7 * 86_400_000;
+  const profileUpdatedAt = cat?.profileUpdatedAt ?? 0;
+  const cutoff = Math.max(sevenDaysAgo, profileUpdatedAt);
   const sortedLogs = [...feedingLogs]
-    .filter((l) => l.timestamp >= sevenDaysAgo)
+    .filter((l) => (!cat?.id || l.catId === cat.id) && l.timestamp >= cutoff)
     .sort((a, b) => b.timestamp - a.timestamp);
 
   // Group by date label
   const groups: LogGroup[] = [];
   for (const log of sortedLogs) {
     const label = getDateLabel(log.timestamp);
-    const last  = groups[groups.length - 1];
+    const last = groups[groups.length - 1];
     if (last?.label === label) last.logs.push(log);
     else groups.push({ label, logs: [log] });
   }
 
   const todayLogs = sortedLogs.filter((l) => getDateLabel(l.timestamp) === 'Hari Ini');
-  const newCount  = sortedLogs.filter((l) => isNew(l.timestamp)).length;
+  const newCount = sortedLogs.filter((l) => isNew(l.timestamp)).length;
   const todayGram = todayLogs.reduce((s, l) => s + (l.amountDispensed ?? 0), 0);
 
   // ── Render ────────────────────────────────────────────────────────────────
@@ -335,7 +343,7 @@ export function Notifications({ onNavigate }: { onNavigate?: (tab: string) => vo
           <p className={cn(
             'text-xl font-black',
             !device ? 'text-gray-400'
-            : (device.foodStockLevel < 20 ? 'text-red-500' : 'text-green-600'),
+              : (device.foodStockLevel < 20 ? 'text-red-500' : 'text-green-600'),
           )}>
             {device ? `${device.foodStockLevel}%` : '—'}
           </p>
