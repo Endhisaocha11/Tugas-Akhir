@@ -119,6 +119,7 @@ export interface CatProfileSnapshot {
   savedAt: number;    // unix ms — when this profile became active
   endedAt?: number;   // unix ms — when it was replaced (undefined = still active)
   name: string;
+  photoUrl?: string;
   gender: 'male' | 'female';
   age: number;
   weight: number;

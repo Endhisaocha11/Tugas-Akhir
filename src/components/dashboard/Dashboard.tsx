@@ -11,6 +11,7 @@ import { useAuth } from '../../lib/AuthContext';
 import { cn } from '../../lib/utils';
 import { UserRole } from '../../types';
 import type { FeedingLog, FeedingScheduleSlot } from '../../types';
+import { getCurrentProfilePeriods, isTimestampInPeriods } from '../../lib/profilePeriods';
 
 function getBodyLabel(bc: number): string {
   if (bc <= 2) return 'Sangat Kurus';
@@ -447,7 +448,7 @@ function CatMonitoringCard({ feedingLogs, bowlWeight, catName, catPhotoUrl }: {
 export function Dashboard() {
   const { profile } = useAuth();
   const isAdmin = profile?.role === UserRole.SUPER_ADMIN;
-  const { cat, device, feedingLogs, targetOwnerId, loading } = useCatData();
+  const { cat, device, feedingLogs, targetOwnerId, profileHistory, loading } = useCatData();
 
   // Track halaman dashboard saat pertama mount
   useEffect(() => {
@@ -477,8 +478,10 @@ export function Dashboard() {
   const todayStr = localDateStr();
 
   // Waktu profil kucing aktif ini dibuat/diupdate terakhir.
-  // Digunakan sebagai batas bawah untuk SEMUA data log yang ditampilkan di dashboard,
-  // sehingga ketika profil diganti, kalender/chart/progress mulai bersih dari nol.
+  // Dipakai sebagai batas bawah untuk progress/counter HARI INI saja (lihat
+  // todayCountFrom), sehingga ganti profil di hari yang sama tidak melanjutkan
+  // counter profil sebelumnya. Untuk data historis (kalender, chart, riwayat)
+  // dipakai `activePeriods` di bawah, bukan cutoff tunggal ini.
   const profileActiveSince = cat?.profileUpdatedAt ?? 0;
 
   const todayStartMs = useMemo(() => {
@@ -490,12 +493,22 @@ export function Dashboard() {
   // (mana yang lebih baru), agar ganti profil tidak melanjutkan counter profil sebelumnya.
   const todayCountFrom = Math.max(todayStartMs, profileActiveSince);
 
+  // Semua periode saat profil kucing yang SEDANG AKTIF pernah aktif — termasuk
+  // periode lampau kalau profil ini pernah diganti ke profil lain lalu
+  // di-restore/diaktifkan kembali. Dipakai supaya kalender/chart/riwayat di
+  // dashboard konsisten dengan FeedingHistory (lihat profilePeriods.ts).
+  const activePeriods = useMemo(
+    () => getCurrentProfilePeriods(cat, profileHistory),
+    [cat, profileHistory]
+  );
+
   // catLogs: log yang benar-benar milik profil AKTIF saat ini.
   //   1. catId cocok dengan profil terbaru (cat?.id)
-  //   2. timestamp >= profileActiveSince → log sebelum profil ini dibuat dibuang
-  //      (mencegah data profil lama muncul di kalender, chart, dan progress)
+  //   2. timestamp jatuh di salah satu periode aktif profil ini (activePeriods)
+  //      — bukan cutoff tunggal, supaya log dari periode-periode sebelumnya
+  //      ikut muncul lagi kalau profil ini di-restore/diaktifkan kembali.
  const catLogs = feedingLogs.filter(
-  (l) => l.catId === cat?.id && l.timestamp >= profileActiveSince
+  (l) => l.catId === cat?.id && isTimestampInPeriods(l.timestamp, activePeriods)
 );
 
   // Log aktif berdasarkan filter yang dipilih

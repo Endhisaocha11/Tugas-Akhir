@@ -28,6 +28,7 @@ import {
 import { motion, AnimatePresence } from 'motion/react';
 import { track } from '@vercel/analytics';
 import { useCatData } from '../../lib/useCatData';
+import { getCurrentProfilePeriods, isTimestampInPeriods } from '../../lib/profilePeriods';
 import { cn } from '../../lib/utils';
 import type { FeedingLog } from '../../types';
 
@@ -275,16 +276,19 @@ function FeedingCalendarAnalytics({ feedingLogs, dailyTarget }: { feedingLogs: F
 // ── Main Analytics Component ─────────────────────────────────────────────────
 
 export function Analytics() {
-  const { cat, feedingLogs, loading } = useCatData();
+  const { cat, feedingLogs, profileHistory, loading } = useCatData();
 
   // Track halaman analytics saat pertama mount
   useEffect(() => {
     track('view_analytics', { catId: cat?.id ?? 'unknown' });
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Filter logs by profileUpdatedAt — sama seperti Dashboard agar chart reset saat profil berubah
-  const profileUpdatedAt = cat?.profileUpdatedAt ?? 0;
-  const filteredLogs = feedingLogs.filter((l) => l.catId === cat?.id);
+  // Filter logs ke seluruh periode aktif profil ini — termasuk periode lampau
+  // kalau profil di-restore/diaktifkan kembali (lihat profilePeriods.ts).
+  const activePeriods = getCurrentProfilePeriods(cat, profileHistory);
+  const filteredLogs = feedingLogs.filter(
+    (l) => l.catId === cat?.id && isTimestampInPeriods(l.timestamp, activePeriods)
+  );
 
   // ── Last 7 days line data (gram/hari) ─────────────────
   const now = Date.now();

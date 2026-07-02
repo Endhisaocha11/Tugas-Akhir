@@ -418,6 +418,7 @@ export function CatProfilePage() {
           savedAt:            cat.profileUpdatedAt ?? 0,
           endedAt:            now,
           name:               cat.name,
+          photoUrl:           (cat as any).photoUrl ?? null,
           gender:             cat.gender,
           age:                cat.age,
           weight:             cat.weight,
@@ -433,6 +434,7 @@ export function CatProfilePage() {
       // Terapkan profil lama ke dokumen kucing aktif
       await updateDoc(doc(db, 'cats', cat.id), {
         name:               pendingRestore.name,
+        photoUrl:           pendingRestore.photoUrl ?? null,
         gender:             pendingRestore.gender,
         age:                pendingRestore.age,
         weight:             pendingRestore.weight,
@@ -571,6 +573,7 @@ export function CatProfilePage() {
     savedAt: cat.profileUpdatedAt ?? _todayStartMs,
     endedAt: undefined,
     name: cat.name,
+    photoUrl: (cat as any).photoUrl,
     gender: cat.gender,
     age: cat.age,
     weight: cat.weight,

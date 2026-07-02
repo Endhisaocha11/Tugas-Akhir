@@ -14,6 +14,7 @@ import { useAuth } from '../../lib/AuthContext';
 import { useCatData } from '../../lib/useCatData';
 import { cn } from '../../lib/utils';
 import type { FeedingScheduleSlot } from '../../types';
+import { getCurrentProfilePeriods, isTimestampInPeriods } from '../../lib/profilePeriods';
 
 // Tanggal lokal (YYYY-MM-DD) — hindari .toISOString() yang UTC (salah di UTC+7 jam 00–07)
 function localDateStr(d = new Date()) {
@@ -134,7 +135,7 @@ function UsageDayRow({ dateKey, data, dailyTarget }: { dateKey: string; data: Us
 
 export function FeedingControl() {
   const { user } = useAuth();
-  const { cat, devices, feedingLogs, targetOwnerId, loading } = useCatData();
+  const { cat, devices, feedingLogs, targetOwnerId, profileHistory, loading } = useCatData();
 
   // Device info modal
   const [showDeviceInfo, setShowDeviceInfo] = useState(false);
@@ -344,10 +345,16 @@ export function FeedingControl() {
   // Selected device object
   const selectedDevice = devices.find((d) => d.id === selectedDeviceId) ?? devices[0] ?? null;
 
-  // Usage history grouped by day — hanya log setelah profil terakhir diubah
+  // Usage history grouped by day — mengikuti seluruh periode aktif profil ini
+  // (termasuk periode lampau kalau profil di-restore/diaktifkan kembali), bukan
+  // cutoff tunggal profileUpdatedAt. Lihat profilePeriods.ts / FeedingHistory.tsx.
+  const activePeriods = useMemo(
+    () => getCurrentProfilePeriods(cat, profileHistory),
+    [cat, profileHistory]
+  );
   const usageDays = useMemo(() => {
     const map = new Map<string, UsageDayData>();
-    feedingLogs.filter((log) => log.catId === cat?.id && log.timestamp >= profileUpdatedAt).forEach((log) => {
+    feedingLogs.filter((log) => log.catId === cat?.id && isTimestampInPeriods(log.timestamp, activePeriods)).forEach((log) => {
       const d = new Date(log.timestamp);
       const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
       const existing = map.get(key) ?? { total: 0, count: 0, manual: 0, auto: 0, first: log.timestamp, last: log.timestamp };
@@ -363,7 +370,7 @@ export function FeedingControl() {
     return Array.from(map.entries())
       .sort(([a], [b]) => b.localeCompare(a))
       .slice(0, 7);
-  }, [feedingLogs, profileUpdatedAt]);
+  }, [feedingLogs, cat?.id, activePeriods]);
 
   // Persist flag ke Firestore agar ESP32 tahu limit tercapai.
   // Jika dailyLimitResetDate == hari ini, berarti admin sudah manual reset → jangan tulis ulang.

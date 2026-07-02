@@ -472,6 +472,7 @@ export default function OnboardingFlow({
           savedAt: prev.profileUpdatedAt ?? 0,
           endedAt: Date.now(),
           name: prev.name ?? '',
+          photoUrl: prev.photoUrl ?? null,
           gender: prev.gender ?? 'male',
           age: prev.age ?? 0,
           weight: prev.weight ?? 0,

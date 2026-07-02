@@ -58,6 +58,7 @@ export function getCurrentProfilePeriods(
     savedAt: cat.profileUpdatedAt ?? 0,
     endedAt: undefined,
     name: cat.name,
+    photoUrl: cat.photoUrl,
     gender: cat.gender,
     age: cat.age,
     weight: cat.weight,
