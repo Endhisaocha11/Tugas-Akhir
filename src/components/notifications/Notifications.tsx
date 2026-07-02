@@ -6,7 +6,7 @@ import {
 import { useCatData } from '../../lib/useCatData';
 import { useAuth } from '../../lib/AuthContext';
 import { cn } from '../../lib/utils';
-import { getCurrentProfilePeriods, isTimestampInPeriods } from '../../lib/Profileperiods';
+import { getCurrentProfilePeriods, isTimestampInPeriods } from '../../lib/profilePeriods';
 import type { FeedingLog } from '../../types';
 import { UserRole } from '../../types';
 

@@ -13,7 +13,7 @@ import {
 } from 'lucide-react';
 import { cn } from '../../lib/utils';
 import { useCatData } from '../../lib/useCatData';
-import { getCurrentProfilePeriods, isTimestampInPeriods } from '../../lib/Profileperiods';
+import { getCurrentProfilePeriods, isTimestampInPeriods } from '../../lib/profilePeriods';
 import { useState, useMemo } from 'react';
 
 const STATUS_MAP: Record<string, string> = {
