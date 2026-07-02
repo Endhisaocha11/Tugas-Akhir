@@ -272,6 +272,10 @@ export default function OnboardingFlow({
   const [photoPreview, setPhotoPreview] = useState<string | null>(null);
   const [photoFile, setPhotoFile] = useState<File | null>(null);
   const [duplicateNameAlert, setDuplicateNameAlert] = useState<string | null>(null);
+  // Draft text untuk input umur & berat — memisahkan apa yang diketik user
+  // dari nilai number yang sudah di-clamp, supaya tidak "snap back" tiap ketik.
+  const [ageDraft, setAgeDraft] = useState<string | null>(null);
+  const [weightDraft, setWeightDraft] = useState<string | null>(null);
   const fileRef = useRef<HTMLInputElement | null>(null);
   const nameCheckRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
 
@@ -855,14 +859,23 @@ export default function OnboardingFlow({
                         <span>📅</span>
                         <input
                           type="number"
+                          inputMode="decimal"
                           aria-label="Usia kucing (tahun)"
                           min="0.3"
                           max="15"
                           step="0.1"
-                          value={form.age}
+                          value={ageDraft ?? form.age}
                           onChange={(e) => {
-                            const v = parseFloat(e.target.value);
-                            if (!isNaN(v)) upd({ age: Math.min(15, Math.max(0.3, v)) });
+                            const raw = e.target.value;
+                            setAgeDraft(raw);
+                            const v = parseFloat(raw);
+                            if (!isNaN(v)) upd({ age: v });
+                          }}
+                          onBlur={() => {
+                            const v = parseFloat(ageDraft ?? String(form.age));
+                            const clamped = isNaN(v) ? form.age : Math.min(15, Math.max(0.3, v));
+                            upd({ age: clamped });
+                            setAgeDraft(null);
                           }}
                           className="w-14 text-center font-black text-amber-800 bg-transparent outline-none border-b border-amber-300 focus:border-amber-600"
                         />
@@ -951,17 +964,25 @@ export default function OnboardingFlow({
                       <div className="flex items-end gap-2">
                         <input
                           type="number"
+                          inputMode="decimal"
                           aria-label="Berat badan kucing (kg)"
                           min="0.5"
                           max="15"
                           step="0.1"
-                          value={form.weight}
+                          value={weightDraft ?? form.weight}
                           onChange={(e) => {
-                            const newWeight = parseFloat(e.target.value);
+                            const raw = e.target.value;
+                            setWeightDraft(raw);
+                            const newWeight = parseFloat(raw);
                             if (!isNaN(newWeight)) {
-                              const clamped = Math.min(15, Math.max(0.5, newWeight));
-                              upd({ weight: clamped, bodyCondition: getAutoBodyCondition(clamped) });
+                              upd({ weight: newWeight, bodyCondition: getAutoBodyCondition(newWeight) });
                             }
+                          }}
+                          onBlur={() => {
+                            const newWeight = parseFloat(weightDraft ?? String(form.weight));
+                            const clamped = isNaN(newWeight) ? form.weight : Math.min(15, Math.max(0.5, newWeight));
+                            upd({ weight: clamped, bodyCondition: getAutoBodyCondition(clamped) });
+                            setWeightDraft(null);
                           }}
                           className="text-5xl font-black text-amber-900 bg-transparent outline-none border-b-2 border-amber-200 focus:border-amber-500 w-28 text-right"
                         />
