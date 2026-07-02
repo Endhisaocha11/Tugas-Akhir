@@ -6,6 +6,7 @@ import {
 import { useCatData } from '../../lib/useCatData';
 import { useAuth } from '../../lib/AuthContext';
 import { cn } from '../../lib/utils';
+import { getCurrentProfilePeriods, isTimestampInPeriods } from '../../lib/Profileperiods';
 import type { FeedingLog } from '../../types';
 import { UserRole } from '../../types';
 
@@ -221,7 +222,7 @@ function FeedCard({
 // ── Main ──────────────────────────────────────────────────────────────────────
 
 export function Notifications({ onNavigate }: { onNavigate?: (tab: string) => void }) {
-  const { cat, device, feedingLogs, loading } = useCatData();
+  const { cat, device, feedingLogs, profileHistory, loading } = useCatData();
   const { profile } = useAuth();
   const isAdmin = profile?.role === UserRole.SUPER_ADMIN;
 
@@ -278,15 +279,19 @@ export function Notifications({ onNavigate }: { onNavigate?: (tab: string) => vo
   // ── Feeding logs (7 hari terakhir, terbaru dulu) ─────────────────────────
   // Batasi hanya ke log milik profil kucing yang SEDANG aktif. Satu owner hanya
   // punya 1 dokumen cat (id tetap sama saat ganti profil), jadi catId saja
-  // tidak cukup untuk membedakan profil lama vs baru — profileUpdatedAt (waktu
-  // profil aktif ini disimpan) dipakai sebagai batas bawah, sama seperti logika
-  // di FeedingHistory & CatProfilePage. Contoh: profil "Momo" aktif jam 01–09,
-  // diganti ke "Yudi" jam 10 → notifikasi hanya menampilkan log >= jam 10.
+  // tidak cukup untuk membedakan profil lama vs baru — dipakai seluruh periode
+  // aktif profil ini (activePeriods), sama seperti logika di FeedingHistory &
+  // CatProfilePage. Ini juga mencakup periode lampau kalau profil ini pernah
+  // non-aktif lalu diaktifkan kembali (bukan cuma cutoff tunggal).
   const sevenDaysAgo = Date.now() - 7 * 86_400_000;
-  const profileUpdatedAt = cat?.profileUpdatedAt ?? 0;
-  const cutoff = Math.max(sevenDaysAgo, profileUpdatedAt);
+  const activePeriods = getCurrentProfilePeriods(cat, profileHistory);
   const sortedLogs = [...feedingLogs]
-    .filter((l) => (!cat?.id || l.catId === cat.id) && l.timestamp >= cutoff)
+    .filter(
+      (l) =>
+        (!cat?.id || l.catId === cat.id) &&
+        l.timestamp >= sevenDaysAgo &&
+        isTimestampInPeriods(l.timestamp, activePeriods)
+    )
     .sort((a, b) => b.timestamp - a.timestamp);
 
   // Group by date label
