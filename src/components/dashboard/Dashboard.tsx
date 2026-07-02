@@ -61,12 +61,27 @@ const STATUS_STYLE: Record<FeedStatus, string> = {
   'today-none':     'bg-blue-500 text-white border-blue-600 ring-2 ring-blue-400 ring-offset-1',
 };
 
-function FeedingCalendarAnalytics({ feedingLogs, dailyTarget }: {
+function FeedingCalendarAnalytics({ feedingLogs, dailyTarget, resetKey }: {
   feedingLogs: FeedingLog[];
   dailyTarget: number;
+  resetKey?: string;
 }) {
   const [viewDate, setViewDate]   = useState(() => new Date());
   const [selectedDay, setSelectedDay] = useState<Date | null>(null);
+
+  // Saat profil aktif berganti/di-restore (resetKey berubah), lompat ke bulan
+  // yang benar-benar punya data feeding paling baru, bukan diam di bulan
+  // berjalan yang bisa jadi kosong (mis. profil lama datanya di bulan lalu).
+  const calAutoKeyRef = useRef<string | null>(null);
+  useEffect(() => {
+    if (resetKey === undefined) return;
+    if (calAutoKeyRef.current === resetKey) return;
+    calAutoKeyRef.current = resetKey;
+    setSelectedDay(null);
+    if (feedingLogs.length === 0) { setViewDate(new Date()); return; }
+    const latest = feedingLogs.reduce((max, l) => (l.timestamp > max ? l.timestamp : max), 0);
+    setViewDate(new Date(latest));
+  }, [resetKey, feedingLogs]);
   const year  = viewDate.getFullYear();
   const month = viewDate.getMonth();
   const logsByDay: Record<string, FeedingLog[]> = {};
@@ -510,6 +525,34 @@ export function Dashboard() {
  const catLogs = feedingLogs.filter(
   (l) => l.catId === cat?.id && isTimestampInPeriods(l.timestamp, activePeriods)
 );
+
+  // ── Auto-pilih mode grafik "Rekap Historis" saat profil berganti/di-restore ──
+  // Bug lama: grafik "Konsumsi Pakan" & kalender selalu default ke "7 hari
+  // terakhir" / bulan berjalan (dihitung dari HARI INI). Kalau yang barusan
+  // di-restore adalah profil lama yang datanya sudah lewat (mis. aktif 8–25
+  // Jun tapi sekarang sudah Juli), grafik itu tampak "kosong" padahal datanya
+  // ada — cuma tersembunyi di luar jendela 7 hari / bulan berjalan. Di sini
+  // kita otomatis pindah ke mode yang benar-benar punya data begitu profil
+  // aktif berganti, TANPA mengganggu pilihan tab manual user setelahnya.
+  const autoModeKeyRef = useRef<string | null>(null);
+  useEffect(() => {
+    if (!cat?.id) return;
+    const key = `${cat.id}:${profileActiveSince}`;
+    if (autoModeKeyRef.current === key) return; // sudah diputuskan utk aktivasi profil ini
+    if (catLogs.length === 0) return;           // tunggu log termuat (atau memang belum ada)
+    autoModeKeyRef.current = key;
+
+    const now = Date.now();
+    const hasLast7d = catLogs.some((l) => now - l.timestamp < 7 * 86400000);
+    if (hasLast7d) return; // default '7d' sudah pas, tidak perlu diubah
+
+    const nowD = new Date();
+    const hasThisMonth = catLogs.some((l) => {
+      const d = new Date(l.timestamp);
+      return d.getMonth() === nowD.getMonth() && d.getFullYear() === nowD.getFullYear();
+    });
+    setWeeklyMode(hasThisMonth ? 'month' : 'year');
+  }, [cat?.id, profileActiveSince, catLogs]);
 
   // Log aktif berdasarkan filter yang dipilih
   const activeLogs = useMemo(() => {
@@ -1300,7 +1343,11 @@ export function Dashboard() {
           </div>
 
           {/* Kalender Pakan */}
-          <FeedingCalendarAnalytics feedingLogs={catLogs} dailyTarget={dailyTarget} />
+          <FeedingCalendarAnalytics
+            feedingLogs={catLogs}
+            dailyTarget={dailyTarget}
+            resetKey={cat?.id ? `${cat.id}:${profileActiveSince}` : undefined}
+          />
         </div>
       </div>
 

@@ -460,10 +460,18 @@ export default function OnboardingFlow({
     }
 
     // ── 2. Simpan profil lama ke history sebelum overwrite ──────────────────
+    // (prevPhotoUrl juga dipakai di step 3 sebagai fallback kalau user tidak upload foto baru)
+    // PENTING: kalau langkah ini gagal, proses HARUS berhenti di sini — jangan
+    // lanjut menimpa dokumen `cats/{id}` di step 3. Sebelumnya kegagalan di sini
+    // cuma di-console.warn() lalu tetap lanjut overwrite, sehingga profil lama
+    // hilang permanen tanpa pernah tercatat di riwayat & tanpa ada pemberitahuan
+    // ke user sama sekali.
+    let prevPhotoUrl: string | null | undefined;
     try {
       const existingSnap = await getDoc(doc(db, 'cats', catId));
       if (existingSnap.exists()) {
         const prev = existingSnap.data();
+        prevPhotoUrl = prev.photoUrl ?? null;
         const histId = `${catId}_${prev.profileUpdatedAt ?? Date.now() - 1}`;
         await setDoc(doc(db, 'catProfileHistory', histId), {
           id: histId,
@@ -486,7 +494,10 @@ export default function OnboardingFlow({
         });
       }
     } catch (histErr) {
-      console.warn('Gagal menyimpan history profil:', histErr);
+      console.error('Gagal menyimpan history profil, membatalkan simpan:', histErr);
+      setSaveError('Gagal mengarsipkan profil sebelumnya. Profil aktif TIDAK diubah agar datanya tidak hilang. Periksa koneksi internet dan coba lagi.');
+      setLoading(false);
+      return;
     }
 
     // ── 3. Simpan data ke Firestore (selalu jalan meski foto gagal) ──────────
@@ -495,7 +506,12 @@ export default function OnboardingFlow({
         id: catId,
         ownerId: user.uid,
         name: form.name,
-        ...(photoUrl ? { photoUrl } : {}),
+        // Foto baru kalau user upload; kalau tidak, PERTAHANKAN foto profil
+        // sebelumnya. setDoc ini menulis ulang SELURUH dokumen, jadi field
+        // yang tidak disertakan akan hilang — photoUrl wajib selalu ada di
+        // payload supaya tidak ke-reset kosong tiap kali simpan profil
+        // tanpa upload foto baru.
+        photoUrl: photoUrl ?? prevPhotoUrl ?? null,
         gender: form.gender,
         age: form.age,
         weight: form.weight,
