@@ -1,5 +1,73 @@
-import { doc, getDoc, runTransaction, serverTimestamp, writeBatch } from 'firebase/firestore';
+import { useEffect, useState } from 'react';
+import {
+  collection,
+  doc,
+  getDoc,
+  limit,
+  onSnapshot,
+  query,
+  runTransaction,
+  serverTimestamp,
+  updateDoc,
+  where,
+  writeBatch,
+} from 'firebase/firestore';
 import { db } from './firebase';
+
+/**
+ * Verifikasi NYATA apakah user ini benar-benar sedang mengklaim sebuah device,
+ * dengan query langsung ke koleksi `devices` (claimedBy == uid) — BUKAN dengan
+ * percaya field cache `users/{uid}.claimedDeviceId`.
+ *
+ * Kenapa ini penting: routing di App.tsx sebelumnya memutuskan halaman "Klaim
+ * Perangkat" hanya dari `profile.claimedDeviceId` (truthy/falsy). Field itu
+ * bisa jadi TIDAK SINKRON dengan kenyataan di koleksi `devices` — misalnya
+ * dokumen user dibuat/disalin manual saat testing dengan field ini sudah
+ * terisi, atau proses release yang gagal separuh jalan. Akibatnya admin yang
+ * SEBENARNYA belum mengklaim device apa pun tetap lolos ke dashboard/
+ * onboarding, melewati halaman klaim device sama sekali.
+ *
+ * Sebagai bonus, kalau terdeteksi ada mismatch (field cache bilang ada device,
+ * tapi devices collection bilang tidak ada yang benar-benar diklaim user ini),
+ * field cache di `users/{uid}` otomatis dibersihkan (self-heal) agar bagian
+ * lain aplikasi yang masih membaca `profile.claimedDeviceId` (mis. link cat ke
+ * device di akhir OnboardingFlow) tidak ikut memakai data basi tersebut.
+ */
+export function useVerifiedDeviceClaim(
+  uid: string | undefined,
+  cachedClaimedDeviceId: string | null | undefined
+) {
+  const [deviceId, setDeviceId] = useState<string | null>(null);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    if (!uid) {
+      setDeviceId(null);
+      setLoading(false);
+      return;
+    }
+
+    const unsub = onSnapshot(
+      query(collection(db, 'devices'), where('claimedBy', '==', uid), limit(1)),
+      (snap) => {
+        const realId = snap.empty ? null : snap.docs[0].id;
+        setDeviceId(realId);
+        setLoading(false);
+
+        // Self-heal: field cache bilang ada klaim, tapi ternyata tidak ada
+        // device yang benar-benar diklaim user ini di Firestore.
+        if (!realId && cachedClaimedDeviceId) {
+          updateDoc(doc(db, 'users', uid), { claimedDeviceId: null }).catch(() => {});
+        }
+      },
+      () => setLoading(false)
+    );
+
+    return unsub;
+  }, [uid, cachedClaimedDeviceId]);
+
+  return { deviceId, loading };
+}
 
 /**
  * Mengklaim sebuah device secara atomic.
@@ -78,11 +146,26 @@ export async function releaseDevice(deviceId: string, userId: string): Promise<v
 }
 
 /**
- * Melepas SEMUA device dalam satu batch.
+ * Melepas SEMUA device dalam satu batch — LINTAS AKUN.
+ *
+ * Ini sengaja dibuat sebagai aksi reset level ROOT/pengelola sistem: siapa
+ * pun yang berstatus SUPER_ADMIN boleh menjalankan ini untuk melepas device
+ * milik SIAPA SAJA (bukan cuma device miliknya sendiri). Firestore rules
+ * (`match /devices/{deviceId}`) sudah disesuaikan untuk mengizinkan ini
+ * khusus untuk aksi MELEPAS (claimedBy → null); mengklaim/merebut device
+ * tetap dibatasi hanya boleh untuk device yang belum diklaim atau milik
+ * sendiri.
+ *
  * deviceIds = semua ID yang diketahui (dari RTDB maupun Firestore).
- * Setiap device yang ada di Firestore di-reset claim-nya;
- * device yang belum punya dokumen Firestore di-skip (tidak perlu diapa-apakan).
- * User yang bersangkutan juga di-reset claimedDeviceId-nya.
+ * Device yang belum punya dokumen Firestore di-skip (tidak perlu diapa-apakan).
+ *
+ * CATATAN: akun LAIN yang device-nya ikut dilepas di sini tidak langsung
+ * ter-update field `users/{uid}.claimedDeviceId`-nya (Firestore rules users/
+ * hanya izinkan update dokumen milik sendiri). Field itu akan otomatis
+ * dibersihkan sendiri (self-heal) lewat `useVerifiedDeviceClaim` begitu
+ * pemilik device tsb login lagi dan app memverifikasi ulang ke `devices`
+ * collection — jadi tetap konsisten walau butuh satu kali refresh dari sisi
+ * pemilik.
  */
 export async function releaseAllDevices(userId: string, deviceIds: string[]): Promise<number> {
   if (deviceIds.length === 0) return 0;
@@ -106,7 +189,10 @@ export async function releaseAllDevices(userId: string, deviceIds: string[]): Pr
     count++;
   });
 
-  // Hanya reset user yang sedang login (tidak boleh update doc user lain per Firestore rules)
+  if (count === 0) return 0;
+
+  // Hanya reset user yang sedang login (tidak boleh update doc user lain per Firestore rules) —
+  // pemilik device lain yang ikut dilepas akan self-heal sendiri saat login berikutnya.
   batch.update(doc(db, 'users', userId), {
     claimedDeviceId: null,
   });

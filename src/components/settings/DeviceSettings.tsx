@@ -127,17 +127,20 @@ export function DeviceSettings() {
     }
   };
 
+// "Lepas Semua" adalah aksi reset level ROOT: melepas SEMUA device di
+// seluruh sistem, lintas akun (bukan cuma milik akun ini). Firestore rules
+// devices/ sudah disesuaikan untuk mengizinkan SUPER_ADMIN mana pun melakukan
+// pelepasan (bukan pengklaiman) device siapa saja — lihat komentar di
+// releaseAllDevices().
 const handleReleaseAllDevices = async () => {
   if (!user) return;
   setReleasingAll(true);
   setReleaseAllError(null);
   try {
     const ids = allSystemDevices.map((d) => d.id);
-    console.log('[Release All] device ids:', ids);
+    console.log('[Release All] device ids (seluruh sistem):', ids);
     const count = await releaseAllDevices(user.uid, ids);
     console.log('[Release All] success, count:', count);
-    // Tambah ini untuk paksa cek profile terbaru:
-    console.log('[Release All] menunggu onSnapshot AuthContext...');
   } catch (e) {
     console.error('[Release All] error:', e);
     setReleaseAllError('Gagal melepas semua perangkat. Periksa koneksi dan coba lagi.');
@@ -703,13 +706,13 @@ const handleReleaseAllDevices = async () => {
           </div>
           <div>
             <h3 className="font-black text-xl text-gray-900">Lepas Semua Alat</h3>
-            <p className="text-xs text-gray-400">Reset total — semua feeder dilepas dari akun ini</p>
+            <p className="text-xs text-gray-400">Reset total — semua feeder di seluruh sistem dilepas</p>
           </div>
         </div>
 
         {!showReleaseAllConfirm ? (
           <div className="bg-white border border-gray-100 rounded-4xl p-5 sm:p-6 shadow-sm space-y-4">
-            {/* Daftar semua device di sistem (RTDB) */}
+            {/* Daftar semua device di sistem (RTDB) — aksi root, lintas akun */}
             {allSystemDevices.length === 0 ? (
               <div className="flex items-center gap-3 bg-gray-50 rounded-2xl px-4 py-3">
                 <AlertTriangle className="w-4 h-4 text-gray-400 shrink-0" />
@@ -738,9 +741,9 @@ const handleReleaseAllDevices = async () => {
             )}
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pt-1">
               <p className="text-xs text-gray-400 leading-relaxed">
-                <span className="font-black text-gray-700">{allSystemDevices.length} perangkat</span> terdeteksi di sistem.
-                Semua akan dilepas dan dapat diklaim ulang.
-                Profil kucing &amp; jadwal <strong>tetap tersimpan</strong>.
+                <span className="font-black text-gray-700">{allSystemDevices.length} perangkat</span> terdeteksi di sistem, dari semua akun.
+                Semua akan dilepas dan dapat diklaim ulang oleh siapa saja.
+                Profil kucing &amp; jadwal setiap akun <strong>tetap tersimpan</strong>.
               </p>
               <button
                 type="button"

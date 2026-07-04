@@ -25,7 +25,7 @@ const Notifications = lazy(() => import('./components/notifications/Notification
 import { UserRole, DeviceStatus } from './types';
 import { cn } from './lib/utils';
 import { useAllDevices, getDeviceStatus } from './lib/useDevices';
-import { claimDevice } from './lib/useDeviceClaim';
+import { claimDevice, useVerifiedDeviceClaim } from './lib/useDeviceClaim';
 
 // ── Device Selection Screen ────────────────────────────────────────────────────
 
@@ -250,6 +250,20 @@ function AppContent() {
   const [loadError, setLoadError] = useState(false);
   const [profileError, setProfileError] = useState(false);
 
+  const isAdmin = profile?.role === UserRole.SUPER_ADMIN;
+
+  // Verifikasi NYATA ke koleksi `devices` — jangan percaya begitu saja field
+  // cache `profile.claimedDeviceId`. Lihat komentar di useVerifiedDeviceClaim
+  // untuk kenapa ini perlu (field cache bisa basi/tidak sinkron, sehingga admin
+  // yang sebenarnya belum klaim device apa pun bisa ke-skip dari halaman
+  // "Klaim Perangkat" langsung ke dashboard/onboarding).
+  // Dipanggil di paling atas (sebelum early return manapun) supaya urutan hook
+  // konsisten di setiap render — memanggilnya setelah early return akan
+  // melanggar Rules of Hooks dan bisa bikin React error saat transisi
+  // loading → loaded ("Rendered more hooks than during the previous render").
+  const { deviceId: verifiedDeviceId, loading: deviceCheckLoading } =
+    useVerifiedDeviceClaim(isAdmin ? user?.uid : undefined, profile?.claimedDeviceId);
+
   // Timeout untuk Firebase auth + Firestore awal (saat app pertama load)
   useEffect(() => {
     if (!loading) { setLoadError(false); return; }
@@ -279,10 +293,12 @@ function AppContent() {
 
   if (!profile) return <CatLoader text="Memuat profil kamu..." />;
 
-  const isAdmin = profile.role === UserRole.SUPER_ADMIN;
+  // Tunggu verifikasi selesai dulu sebelum memutuskan routing, supaya tidak
+  // sempat "flash" ke Dashboard/Onboarding lalu balik lagi ke DeviceSelectionScreen.
+  if (isAdmin && deviceCheckLoading) return <CatLoader />;
 
   // ── Admin: belum klaim device → pilih device ──────────────────────────────────
-  if (isAdmin && !profile.claimedDeviceId) {
+  if (isAdmin && !verifiedDeviceId) {
     return <DeviceSelectionScreen />;
   }
 
