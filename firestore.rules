@@ -78,9 +78,17 @@ service cloud.firestore {
     match /devices/{deviceId} {
       allow read: if isSignedIn();
 
+      // Update field klaim hanya boleh kalau:
+      // - device belum diklaim siapa pun (mengklaim device baru), ATAU
+      // - device sedang diklaim oleh diri sendiri (update/lepas klaim sendiri).
+      // Tanpa baris claimedBy ini, admin manapun bisa mengubah/melepas klaim
+      // device milik admin LAIN selama field yang diubah cuma 4 field di bawah —
+      // ini persis lubang yang membuat bug "Lepas Semua Device" bisa
+      // menghapus klaim akun lain sebelum diperbaiki di sisi kode.
       allow update: if isSuperAdmin() &&
                       request.resource.data.diff(resource.data).affectedKeys()
-                        .hasOnly(['isClaimed', 'claimedBy', 'claimedAt', 'linkedCatId']);
+                        .hasOnly(['isClaimed', 'claimedBy', 'claimedAt', 'linkedCatId']) &&
+                      (resource.data.claimedBy == null || resource.data.claimedBy == myUid());
 
       allow create, delete: if false;
     }
