@@ -40,7 +40,7 @@ function getProgressBarColor(pct: number) {
 
 function getSlotLabel(time: string): string {
   const hour = parseInt(time.split(':')[0], 10);
-  if (hour < 7)  return 'Subuh';
+  if (hour < 7) return 'Subuh';
   if (hour < 12) return 'Pagi';
   if (hour < 15) return 'Siang';
   if (hour < 18) return 'Sore';
@@ -50,7 +50,7 @@ function getSlotLabel(time: string): string {
 
 function getSlotIcon(time: string): string {
   const hour = parseInt(time.split(':')[0], 10);
-  if (hour < 7)  return '🌅';
+  if (hour < 7) return '🌅';
   if (hour < 12) return '☀️';
   if (hour < 15) return '🌤️';
   if (hour < 18) return '🌇';
@@ -192,12 +192,12 @@ export function FeedingControl() {
       const target = cat.dailyGramTarget;
       const perSlot = Math.round(target / 6);
       const sixSlots: FeedingScheduleSlot[] = [
-        { time: '06:00', label: 'Subuh',  amount: perSlot,                   active: true },
-        { time: '09:00', label: 'Pagi',   amount: perSlot,                   active: true },
-        { time: '12:00', label: 'Siang',  amount: perSlot,                   active: true },
-        { time: '15:00', label: 'Sore',   amount: perSlot,                   active: true },
-        { time: '18:00', label: 'Petang', amount: perSlot,                   active: true },
-        { time: '21:00', label: 'Malam',  amount: target - 5 * perSlot,      active: true },
+        { time: '06:00', label: 'Subuh', amount: perSlot, active: true },
+        { time: '09:00', label: 'Pagi', amount: perSlot, active: true },
+        { time: '12:00', label: 'Siang', amount: perSlot, active: true },
+        { time: '15:00', label: 'Sore', amount: perSlot, active: true },
+        { time: '18:00', label: 'Petang', amount: perSlot, active: true },
+        { time: '21:00', label: 'Malam', amount: target - 5 * perSlot, active: true },
       ];
       setSchedule(sixSlots);
       if (cat.id) {
@@ -248,8 +248,15 @@ export function FeedingControl() {
   // jam sebuah slot ke dekat jam slot lain yang sudah terkirim hari itu akan membuat
   // slot yang baru digeser ikut salah ditandai "sudah terkirim" (jadi abu-abu),
   // padahal log itu sebenarnya milik slot lain.
+  // PENTING: simpan amountRequested (target yang benar-benar dikirim ke device —
+  // sudah termasuk hasil smart adjustment saat itu) BUKAN hanya amountDispensed
+  // (bobot aktual hasil timbangan, yang bisa meleset dari target karena toleransi
+  // hardware). Kalau cuma pakai amountDispensed dibulatkan, slot yang sebelumnya
+  // disesuaikan (mis. 17g → 15g) tapi realisasinya 16.5g akan tampil "17g" lagi
+  // setelah terkirim (16.5 dibulatkan ke 17, kebetulan sama dengan porsi asli),
+  // sehingga status "disesuaikan"-nya hilang dari tampilan padahal seharusnya tetap.
   const deliveredTodaySlots = useMemo(() => {
-    const m = new Map<string, number>();
+    const m = new Map<string, { requested: number; dispensed: number }>();
     if (!cat?.id) return m;
     feedingLogs
       .filter((l) => l.notes === 'scheduled' && l.catId === cat.id && l.timestamp >= todayCountFrom)
@@ -266,7 +273,12 @@ export function FeedingControl() {
             bestTime = sl.time;
           }
         });
-        if (bestTime) m.set(bestTime, l.amountDispensed ?? 0);
+        if (bestTime) {
+          m.set(bestTime, {
+            requested: l.amountRequested ?? l.amountDispensed ?? 0,
+            dispensed: l.amountDispensed ?? 0,
+          });
+        }
       });
     return m;
   }, [feedingLogs, schedule, todayCountFrom, cat?.id]);
@@ -294,8 +306,8 @@ export function FeedingControl() {
     // Semua slot aktif hari ini yang belum punya log (future ATAU past-unlogged).
     const pendingActive = smartFeedEnabled
       ? schedule
-          .filter((s) => s.active !== false && !deliveredTodaySlots.has(s.time))
-          .sort((a, b) => a.time.localeCompare(b.time))
+        .filter((s) => s.active !== false && !deliveredTodaySlots.has(s.time))
+        .sort((a, b) => a.time.localeCompare(b.time))
       : [];
 
     let pendingSlots: Array<{ time: string; originalAmount: number; adjustedAmount: number }> | null = null;
@@ -530,34 +542,34 @@ export function FeedingControl() {
 
       wasConfirmed = rtdb
         ? await new Promise<boolean>((resolve) => {
-            let unsubscribe: (() => void) | null = null;
+          let unsubscribe: (() => void) | null = null;
 
-            cancelFeedRef.current = async () => {
+          cancelFeedRef.current = async () => {
+            unsubscribe?.();
+            cancelFeedRef.current = null;
+            wasCancelled = true;
+            // Kirim perintah cancel ke ESP32 via RTDB agar servo berhenti
+            if (rtdb) {
+              await set(ref(rtdb, `devices/${deviceId}/command`), {
+                type: 'cancel',
+                status: 'pending',
+                requestedAt: Date.now(),
+              }).catch(console.error);
+            }
+            resolve(false);
+          };
+
+          const weightRef = ref(rtdb, `devices/${deviceId}/weight`);
+          unsubscribe = onValue(weightRef, (snapshot) => {
+            const current = (snapshot.val() as number) ?? 0;
+            if (current >= initialWeight + THRESHOLD) {
+              actualDispensed = Math.max(1, Math.round(current - initialWeight));
               unsubscribe?.();
               cancelFeedRef.current = null;
-              wasCancelled = true;
-              // Kirim perintah cancel ke ESP32 via RTDB agar servo berhenti
-              if (rtdb) {
-                await set(ref(rtdb, `devices/${deviceId}/command`), {
-                  type: 'cancel',
-                  status: 'pending',
-                  requestedAt: Date.now(),
-                }).catch(console.error);
-              }
-              resolve(false);
-            };
-
-            const weightRef = ref(rtdb, `devices/${deviceId}/weight`);
-            unsubscribe = onValue(weightRef, (snapshot) => {
-              const current = (snapshot.val() as number) ?? 0;
-              if (current >= initialWeight + THRESHOLD) {
-                actualDispensed = Math.max(1, Math.round(current - initialWeight));
-                unsubscribe?.();
-                cancelFeedRef.current = null;
-                resolve(true);
-              }
-            });
-          })
+              resolve(true);
+            }
+          });
+        })
         : false;
 
       // 3. Hanya catat log jika TIDAK dibatalkan user
@@ -691,7 +703,7 @@ export function FeedingControl() {
                 type="button"
                 onClick={() => updateDoc(doc(db, 'cats', cat.id), {
                   dailyLimitReachedDate: null,
-                  dailyLimitResetDate:   todayStr,
+                  dailyLimitResetDate: todayStr,
                 }).catch(console.error)}
                 className="px-3 py-1 bg-white border border-red-200 hover:bg-red-50 rounded-xl text-red-600 text-[11px] font-bold transition-colors"
               >
@@ -1004,18 +1016,18 @@ export function FeedingControl() {
             {/* Smart adjustment preview */}
             {!isAtDailyLimit && !wouldExceed && futureScheduleTotal > 0 &&
               dailyTarget > 0 && (todayTotal + feedingAmount + futureScheduleTotal) > dailyTarget && (
-              <div className="flex items-start gap-3 px-5 py-4 bg-yellow-50 border border-yellow-100 rounded-2xl">
-                <AlertTriangle className="w-5 h-5 text-yellow-500 shrink-0 mt-0.5" />
-                <div>
-                  <p className="text-sm text-yellow-700 font-semibold">
-                    {feedingAmount}g ini + jadwal otomatis hari ini ({futureScheduleTotal}g) = {todayTotal + feedingAmount + futureScheduleTotal}g — akan melebihi target {dailyTarget}g.
-                  </p>
-                  <p className="text-xs text-yellow-600 mt-1">
-                    Jadwal otomatis berikutnya akan disesuaikan otomatis setelah pemberian ini.
-                  </p>
+                <div className="flex items-start gap-3 px-5 py-4 bg-yellow-50 border border-yellow-100 rounded-2xl">
+                  <AlertTriangle className="w-5 h-5 text-yellow-500 shrink-0 mt-0.5" />
+                  <div>
+                    <p className="text-sm text-yellow-700 font-semibold">
+                      {feedingAmount}g ini + jadwal otomatis hari ini ({futureScheduleTotal}g) = {todayTotal + feedingAmount + futureScheduleTotal}g — akan melebihi target {dailyTarget}g.
+                    </p>
+                    <p className="text-xs text-yellow-600 mt-1">
+                      Jadwal otomatis berikutnya akan disesuaikan otomatis setelah pemberian ini.
+                    </p>
+                  </div>
                 </div>
-              </div>
-            )}
+              )}
           </div>
 
           {/* ── OFFLINE PANEL ── */}
@@ -1146,12 +1158,12 @@ export function FeedingControl() {
                   !isDeviceOnline
                     ? 'bg-gray-100 text-gray-400 cursor-not-allowed'
                     : isAtDailyLimit
-                    ? 'bg-gray-100 text-gray-400 cursor-not-allowed'
-                    : wouldExceed
-                    ? 'bg-red-100 text-red-400 cursor-not-allowed border-2 border-red-200'
-                    : feedingAmount < 5
-                    ? 'bg-gray-100 text-gray-400 cursor-not-allowed'
-                    : 'bg-amber-400 hover:bg-amber-500 active:scale-95 text-white shadow-lg shadow-amber-200'
+                      ? 'bg-gray-100 text-gray-400 cursor-not-allowed'
+                      : wouldExceed
+                        ? 'bg-red-100 text-red-400 cursor-not-allowed border-2 border-red-200'
+                        : feedingAmount < 5
+                          ? 'bg-gray-100 text-gray-400 cursor-not-allowed'
+                          : 'bg-amber-400 hover:bg-amber-500 active:scale-95 text-white shadow-lg shadow-amber-200'
                 )}
               >
                 {!isDeviceOnline ? (
@@ -1176,10 +1188,10 @@ export function FeedingControl() {
                   feedResult === 'success'
                     ? 'bg-green-50 border-green-300 text-green-700'
                     : feedResult === 'cancelled'
-                    ? 'bg-gray-50 border-gray-300 text-gray-700'
-                    : feedResult === 'timeout'
-                    ? 'bg-yellow-50 border-yellow-300 text-yellow-700'
-                    : 'bg-red-50 border-red-200 text-red-700'
+                      ? 'bg-gray-50 border-gray-300 text-gray-700'
+                      : feedResult === 'timeout'
+                        ? 'bg-yellow-50 border-yellow-300 text-yellow-700'
+                        : 'bg-red-50 border-red-200 text-red-700'
                 )}
               >
                 {feedResult === 'success' ? (
@@ -1286,24 +1298,28 @@ export function FeedingControl() {
           {/* Slot list */}
           <div className="flex-1 overflow-y-auto space-y-4 min-h-0">
             {schedule.map((slot, index) => {
-              const deliveredAmount = deliveredTodaySlots.get(slot.time);
-              const deliveredToday = deliveredAmount !== undefined;
+              const deliveredInfo = deliveredTodaySlots.get(slot.time);
+              const deliveredToday = deliveredInfo !== undefined;
               const adjSlot = adjustedFutureSlots?.find((a) => a.time === slot.time);
               // Slot aktif yang waktunya sudah lewat hari ini → indikator visual saja ("terlewati").
               // Tidak lagi diasumsikan sudah memotong limit harian — limit hanya naik dari log aktual.
               const isPastToday = slot.active !== false && smartFeedEnabled && slot.time <= currentTimeStr;
               const isDoneToday = deliveredToday || isPastToday;
 
-              // - Slot yang SUDAH terkirim (ada log): tampilkan jumlah AKTUAL yang dikirim
-              //   (amountDispensed), bukan jumlah dari alokasi proporsional.
+              // - Slot yang SUDAH terkirim (ada log): tampilkan TARGET yang diminta ke device
+              //   (amountRequested) — ini sudah mengandung hasil smart adjustment saat pemberian
+              //   itu terjadi. JANGAN pakai amountDispensed (bobot aktual hasil timbangan),
+              //   karena toleransi hardware bisa bikin angkanya beda dari target dan membuat
+              //   status "disesuaikan" hilang begitu dibulatkan kebetulan sama dengan porsi asli.
+              //   Detail bobot aktual tetap bisa dilihat lengkap di halaman Riwayat.
               // - Slot yang BELUM terkirim (future atau past-unlogged): tampilkan porsi yang
               //   sudah disesuaikan otomatis (adjSlot) jika ada — porsi ini tetap dipertahankan
               //   sampai slot benar-benar terkirim, tidak jatuh balik ke porsi asli saat lewat.
-              const displayAmount = deliveredToday
-                ? Math.round(deliveredAmount)
+              const displayAmount = deliveredInfo
+                ? Math.round(deliveredInfo.requested)
                 : (adjSlot?.adjustedAmount ?? slot.amount);
-              const wasAdjusted = deliveredToday
-                ? Math.round(deliveredAmount) !== slot.amount
+              const wasAdjusted = deliveredInfo
+                ? Math.round(deliveredInfo.requested) !== slot.amount
                 : (adjSlot !== undefined && adjSlot.adjustedAmount !== slot.amount);
 
               return editingIndex === index ? (
@@ -1355,10 +1371,10 @@ export function FeedingControl() {
                     !smartFeedEnabled || isAtDailyLimit
                       ? 'bg-gray-50 border-gray-200 opacity-50 grayscale'
                       : isDoneToday
-                      ? 'bg-gray-50 border-gray-200 opacity-60'
-                      : slot.active !== false
-                      ? 'bg-white border-gray-100 hover:border-amber-200'
-                      : 'bg-gray-50 border-gray-100 opacity-60'
+                        ? 'bg-gray-50 border-gray-200 opacity-60'
+                        : slot.active !== false
+                          ? 'bg-white border-gray-100 hover:border-amber-200'
+                          : 'bg-gray-50 border-gray-100 opacity-60'
                   )}
                 >
                   <div className="flex items-center gap-3">
@@ -1401,8 +1417,8 @@ export function FeedingControl() {
                         isDoneToday
                           ? 'bg-gray-100 border-gray-200 text-gray-300 cursor-default'
                           : slot.active !== false
-                          ? 'bg-green-50 border-green-400 text-green-600 hover:bg-green-100'
-                          : 'bg-white border-gray-200 text-gray-300 hover:border-green-300'
+                            ? 'bg-green-50 border-green-400 text-green-600 hover:bg-green-100'
+                            : 'bg-white border-gray-200 text-gray-300 hover:border-green-300'
                       )}
                     >
                       <Check className="w-5 h-5" />

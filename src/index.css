@@ -12,6 +12,15 @@
 }
 
 @layer base {
+  html {
+    /* Default zoom tampilan web = 80% (permintaan Dexter).
+       Pakai CSS `zoom` (bukan transform:scale) karena zoom ikut menyesuaikan
+       layout flow (reflow), tidak seperti transform:scale yang cuma
+       memperbesar/memperkecil secara visual tanpa mengubah ukuran layout asli
+       — jadi scrollbar, posisi elemen fixed/sticky, dan klik tetap akurat.
+       Didukung di Chrome/Edge/Opera/Safari 17.4+ dan Firefox 126+. */
+    zoom: 80%;
+  }
   body {
     @apply bg-bg-warm text-text-main font-sans antialiased;
   }
@@ -47,4 +56,3 @@
     pointer-events: none;
   }
 }
-
