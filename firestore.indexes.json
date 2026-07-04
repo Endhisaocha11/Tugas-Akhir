@@ -1,0 +1,13 @@
+{
+  "indexes": [
+    {
+      "collectionGroup": "catProfileHistory",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "ownerId", "order": "ASCENDING" },
+        { "fieldPath": "savedAt", "order": "DESCENDING" }
+      ]
+    }
+  ],
+  "fieldOverrides": []
+}

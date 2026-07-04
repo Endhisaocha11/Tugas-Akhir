@@ -7,6 +7,7 @@ import {
   where,
   onSnapshot,
   limit,
+  orderBy,
   addDoc,
 } from 'firebase/firestore';
 import { ref, onValue, set } from 'firebase/database';
@@ -41,20 +42,20 @@ export function useCatData(): CatData {
   const { user, profile } = useAuth();
   const { selectedDeviceId, setSelectedDeviceId } = useDevice();
 
-  const [cat, setCat]                   = useState<CatProfile | null>(null);
-  const [allCatIds, setAllCatIds]       = useState<string[]>([]);
-  const [devices, setDevices]           = useState<DeviceStatus[]>([]);
+  const [cat, setCat] = useState<CatProfile | null>(null);
+  const [allCatIds, setAllCatIds] = useState<string[]>([]);
+  const [devices, setDevices] = useState<DeviceStatus[]>([]);
   const [rtdbDeviceData, setRtdbDeviceData] = useState<Record<string, any> | null>(null);
-  const [staleCheck, setStaleCheck]     = useState<number>(0);   // ticker 30 detik agar isOnline dievaluasi ulang
-  const [feedingLogs, setFeedingLogs]   = useState<FeedingLog[]>([]);
+  const [staleCheck, setStaleCheck] = useState<number>(0);   // ticker 30 detik agar isOnline dievaluasi ulang
+  const [feedingLogs, setFeedingLogs] = useState<FeedingLog[]>([]);
   const [profileHistory, setProfileHistory] = useState<CatProfileSnapshot[]>([]);
-  const [loading, setLoading]           = useState(true);
+  const [loading, setLoading] = useState(true);
 
-  const prevTargetRef           = useRef<number | null>(null);
-  const prevScheduleKeyRef      = useRef<string | null>(null);
+  const prevTargetRef = useRef<number | null>(null);
+  const prevScheduleKeyRef = useRef<string | null>(null);
   const prevProfileUpdatedAtRef = useRef<number | null>(null);
   // Ref cat terkini agar listener RTDB tidak punya stale closure
-  const catRef                  = useRef<CatProfile | null>(null);
+  const catRef = useRef<CatProfile | null>(null);
 
   const isAdmin = profile?.role === UserRole.SUPER_ADMIN;
   const targetOwnerId = isAdmin
@@ -101,7 +102,18 @@ export function useCatData(): CatData {
 
     subs.push(
       onSnapshot(
-        query(collection(db, 'catProfileHistory'), where('ownerId', '==', targetOwnerId), limit(20)),
+        // FIX: sebelumnya limit(20) TANPA orderBy — Firestore tidak menjamin
+        // urutan berdasarkan savedAt, jadi 20 dokumen yang kepilih bisa saja
+        // bukan yang terbaru (bisa kepotong riwayat penting), dan kalau total
+        // riwayat > 20 entri, sisanya tidak pernah ke-fetch sama sekali.
+        // Sekarang diurutkan dulu berdasarkan savedAt terbaru, baru dibatasi
+        // dengan limit yang lebih longgar.
+        query(
+          collection(db, 'catProfileHistory'),
+          where('ownerId', '==', targetOwnerId),
+          orderBy('savedAt', 'desc'),
+          limit(200)
+        ),
         (snap) => {
           const history = snap.docs
             .map((d) => ({ id: d.id, ...d.data() } as CatProfileSnapshot))
@@ -171,11 +183,11 @@ export function useCatData(): CatData {
 
       try {
         // Cek apakah slot ini sudah diproses hari ini (guard ESP32 retry)
-        const today   = new Date().toDateString();
+        const today = new Date().toDateString();
         const slotKey = `${catId}:${data.slot ?? Math.floor((data.ts || Date.now()) / 60000)}`;
         if (processedSlotsRef.current.get(slotKey) === today) {
           // Sudah diproses — hapus node retry tanpa buat log baru
-          await set(ref(rtdb, `devices/${claimedDeviceId}/scheduledFeedLog`), null).catch(() => {});
+          await set(ref(rtdb, `devices/${claimedDeviceId}/scheduledFeedLog`), null).catch(() => { });
           return;
         }
 
@@ -193,12 +205,12 @@ export function useCatData(): CatData {
         const isCloseEnough = actual >= requested - threshold;
         await addDoc(collection(db, 'feedingLogs'), {
           catId,
-          deviceId:        claimedDeviceId,
-          timestamp:       Date.now(),
+          deviceId: claimedDeviceId,
+          timestamp: Date.now(),
           amountRequested: requested,
           amountDispensed: actual,
-          status:          isCloseEnough ? 'success' : 'warning',
-          notes:           'scheduled',
+          status: isCloseEnough ? 'success' : 'warning',
+          notes: 'scheduled',
         });
         processedSlotsRef.current.set(slotKey, today);
         // Hapus node setelah log dibuat agar ESP32 bisa menulis slot berikutnya secara fresh
@@ -232,7 +244,7 @@ export function useCatData(): CatData {
         const deduped = logs.filter((log) => {
           if (log.notes !== 'scheduled') return true;
           const bucket = Math.floor(log.timestamp / (3 * 60 * 1000));
-          const key    = `${log.catId}:${bucket}`;
+          const key = `${log.catId}:${bucket}`;
           if (seen.has(key)) return false;
           seen.add(key);
           return true;
@@ -260,20 +272,20 @@ export function useCatData(): CatData {
   // Clear limit flag saat target/jadwal berubah ATAU saat profil disimpan dari luar (onboarding)
   useEffect(() => {
     if (!cat || !targetOwnerId) return;
-    const currentTarget           = cat.dailyGramTarget ?? 0;
-    const currentScheduleKey      = (cat.feedingSchedule ?? [])
+    const currentTarget = cat.dailyGramTarget ?? 0;
+    const currentScheduleKey = (cat.feedingSchedule ?? [])
       .map((s) => `${s.time}:${s.amount}`)
       .join('|');
     const currentProfileUpdatedAt = cat.profileUpdatedAt ?? 0;
-    const isFirstLoad             = prevTargetRef.current === null;
-    const targetChanged           = !isFirstLoad && prevTargetRef.current !== currentTarget;
-    const scheduleChanged         = !isFirstLoad && prevScheduleKeyRef.current !== currentScheduleKey;
+    const isFirstLoad = prevTargetRef.current === null;
+    const targetChanged = !isFirstLoad && prevTargetRef.current !== currentTarget;
+    const scheduleChanged = !isFirstLoad && prevScheduleKeyRef.current !== currentScheduleKey;
     // Deteksi simpan profil dari OnboardingFlow/CatProfilePage (mereka tulis profileUpdatedAt)
-    const profileSavedExternally  = !isFirstLoad
+    const profileSavedExternally = !isFirstLoad
       && prevProfileUpdatedAtRef.current !== null
       && prevProfileUpdatedAtRef.current !== currentProfileUpdatedAt;
-    prevTargetRef.current           = currentTarget;
-    prevScheduleKeyRef.current      = currentScheduleKey;
+    prevTargetRef.current = currentTarget;
+    prevScheduleKeyRef.current = currentScheduleKey;
     prevProfileUpdatedAtRef.current = currentProfileUpdatedAt;
     if (!isFirstLoad && (targetChanged || scheduleChanged || profileSavedExternally)) {
       const _d = new Date();
@@ -282,7 +294,7 @@ export function useCatData(): CatData {
       // agar ESP32 tidak membaca slot amounts lama dari sesi sebelumnya.
       const updates: Record<string, string | null> = {
         dailyLimitReachedDate: null,
-        dailyAdjustments:      null,
+        dailyAdjustments: null,
       };
       if (targetChanged || scheduleChanged) {
         updates.dailyLimitResetDate = todayStr;
@@ -314,18 +326,18 @@ export function useCatData(): CatData {
   const fsDevice = devices[0] ?? null;
   const device: DeviceStatus | null = fsDevice
     ? {
-        ...fsDevice,
-        // Online hanya jika: data RTDB ada, ESP32 set isOnline=true, DAN data belum basi (< 90 detik)
-        isOnline:             rtdbDeviceData?.isOnline === true && isRtdbLive,
-        lastPulse:            parseRtdbTime(rtdbDeviceData?.time)  || fsDevice.lastPulse,
-        foodStockLevel:       rtdbDeviceData?.foodStock            ?? fsDevice.foodStockLevel,
-        currentWeightOnScale: rtdbDeviceData != null
-          ? Math.round(rtdbDeviceData.weight ?? 0)
-          : fsDevice.currentWeightOnScale,
-        servoStatus:          rtdbDeviceData?.servoStatus          ?? fsDevice.servoStatus,
-        // RTDB adalah sumber utama kalibrasi (ESP32 baca/tulis ke sana); Firestore sebagai backup
-        calibrationFactor:    rtdbDeviceData?.calibration?.loadCellFactor || fsDevice.calibrationFactor || 420,
-      }
+      ...fsDevice,
+      // Online hanya jika: data RTDB ada, ESP32 set isOnline=true, DAN data belum basi (< 90 detik)
+      isOnline: rtdbDeviceData?.isOnline === true && isRtdbLive,
+      lastPulse: parseRtdbTime(rtdbDeviceData?.time) || fsDevice.lastPulse,
+      foodStockLevel: rtdbDeviceData?.foodStock ?? fsDevice.foodStockLevel,
+      currentWeightOnScale: rtdbDeviceData != null
+        ? Math.round(rtdbDeviceData.weight ?? 0)
+        : fsDevice.currentWeightOnScale,
+      servoStatus: rtdbDeviceData?.servoStatus ?? fsDevice.servoStatus,
+      // RTDB adalah sumber utama kalibrasi (ESP32 baca/tulis ke sana); Firestore sebagai backup
+      calibrationFactor: rtdbDeviceData?.calibration?.loadCellFactor || fsDevice.calibrationFactor || 420,
+    }
     : null;
 
   return {
