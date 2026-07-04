@@ -3,9 +3,9 @@ import { motion, AnimatePresence } from 'motion/react';
 import {
   Scale, Heart, Activity, ShieldCheck, Calculator, Utensils,
   ChevronRight, AlertTriangle, CheckCircle2, ChevronDown, Camera, Loader2, Search,
-  RotateCcw, X, PawPrint,
+  RotateCcw, X, PawPrint, Trash2,
 } from 'lucide-react';
-import { doc, updateDoc, setDoc, getDoc } from 'firebase/firestore';
+import { doc, updateDoc, setDoc, deleteDoc } from 'firebase/firestore';
 import { db } from '../../lib/firebase';
 import { useCatData } from '../../lib/useCatData';
 import { useAuth } from '../../lib/AuthContext';
@@ -69,6 +69,7 @@ function profileIdentityKey(snap: CatProfileSnapshot): string {
 export interface ActivePeriod {
   savedAt: number;
   endedAt?: number; // undefined = masih aktif
+  id?: string;       // id dokumen catProfileHistory ('current' = bukan dokumen histori, tidak bisa dihapus)
 }
 
 export interface ProfileGroup {
@@ -123,11 +124,13 @@ function ProfileHistoryCard({
   feedingLogs,
   isAdmin,
   onRestore,
+  onDelete,
 }: {
   group: ProfileGroup;
   feedingLogs: FeedingLog[];
   isAdmin?: boolean;
   onRestore?: () => void;
+  onDelete?: () => void;
 }) {
   const [expanded, setExpanded] = useState(false);
   const snap  = group.representative;
@@ -222,6 +225,17 @@ function ProfileHistoryCard({
               >
                 <RotateCcw className="w-3 h-3" />
                 <span className="hidden sm:inline">Pakai Profil Ini</span>
+              </button>
+            )}
+            {!isCurrent && isAdmin && onDelete && (
+              <button
+                type="button"
+                aria-label="Hapus riwayat profil ini"
+                title="Hapus riwayat profil ini"
+                onClick={(e) => { e.stopPropagation(); onDelete(); }}
+                className="flex items-center justify-center w-8 h-8 rounded-xl bg-red-50 hover:bg-red-100 text-red-500 transition-colors shrink-0"
+              >
+                <Trash2 className="w-3.5 h-3.5" />
               </button>
             )}
             <ChevronDown className={cn(
@@ -383,6 +397,37 @@ export function CatProfilePage() {
   const [restoring, setRestoring] = useState(false);
   const [restoreError, setRestoreError] = useState<string | null>(null);
 
+  // Delete history state
+  const [pendingDelete, setPendingDelete] = useState<ProfileGroup | null>(null);
+  const [deleting, setDeleting] = useState(false);
+  const [deleteError, setDeleteError] = useState<string | null>(null);
+
+  const handleConfirmDelete = async () => {
+    if (!pendingDelete) return;
+    setDeleting(true);
+    setDeleteError(null);
+    try {
+      // Hapus semua dokumen catProfileHistory yang tergabung dalam grup ini.
+      // 'current' bukan dokumen histori (itu profil aktif di cats/{catId}), jadi dilewati.
+      const idsToDelete = pendingDelete.periods
+        .map((p) => p.id)
+        .filter((id): id is string => !!id && id !== 'current');
+
+      if (idsToDelete.length === 0) {
+        setDeleteError('Tidak ada data riwayat yang bisa dihapus dari grup ini.');
+        setDeleting(false);
+        return;
+      }
+
+      await Promise.all(idsToDelete.map((id) => deleteDoc(doc(db, 'catProfileHistory', id))));
+      setPendingDelete(null);
+    } catch {
+      setDeleteError('Gagal menghapus riwayat. Periksa koneksi dan coba lagi.');
+    } finally {
+      setDeleting(false);
+    }
+  };
+
   const handleConfirmRestore = async () => {
     if (!pendingRestore || !cat) return;
     setRestoring(true);
@@ -407,30 +452,37 @@ export function CatProfilePage() {
 
     try {
       const now = Date.now();
-      // Arsipkan profil aktif ke catProfileHistory — skip jika sudah ada (OnboardingFlow bisa duluan)
+      // Arsipkan profil aktif ke catProfileHistory.
+      // CATATAN: sebelumnya di sini ada getDoc() untuk cek "apakah histId sudah
+      // ada" (skip kalau sudah, karena OnboardingFlow bisa duluan menulis histId
+      // yang sama). Itu SALAH — rule Firestore untuk 'read' pada dokumen yang
+      // belum ada membuat `resource` bernilai null, dan `resource.data.ownerId`
+      // gagal dievaluasi → selalu permission-denied walau punya akses sah.
+      // Makanya restore selalu gagal dengan pesan "Gagal menerapkan profil"
+      // meski koneksi internet normal.
+      // Solusinya: langsung setDoc dengan merge:true, tidak perlu baca dulu.
+      // Aman di-overwrite karena datanya snapshot dari `cat` yang sama persis
+      // kalau kebetulan sudah ditulis lebih dulu oleh OnboardingFlow.
       const histId = `${cat.id}_${cat.profileUpdatedAt ?? now - 1}`;
-      const existing = await getDoc(doc(db, 'catProfileHistory', histId));
-      if (!existing.exists()) {
-        await setDoc(doc(db, 'catProfileHistory', histId), {
-          id:                 histId,
-          catId:              cat.id,
-          ownerId:            cat.ownerId,
-          savedAt:            cat.profileUpdatedAt ?? 0,
-          endedAt:            now,
-          name:               cat.name,
-          photoUrl:           (cat as any).photoUrl ?? null,
-          gender:             cat.gender,
-          age:                cat.age,
-          weight:             cat.weight,
-          isSterilized:       cat.isSterilized,
-          bodyCondition:      cat.bodyCondition,
-          dailyGramTarget:    cat.dailyGramTarget,
-          dailyCalorieTarget: cat.dailyCalorieTarget,
-          kiloCaloriesPerKg:  cat.kiloCaloriesPerKg,
-          activity:           (cat as any).activity ?? 'normal',
-          feedingSchedule:    cat.feedingSchedule ?? [],
-        });
-      }
+      await setDoc(doc(db, 'catProfileHistory', histId), {
+        id:                 histId,
+        catId:              cat.id,
+        ownerId:            cat.ownerId,
+        savedAt:            cat.profileUpdatedAt ?? 0,
+        endedAt:            now,
+        name:               cat.name,
+        photoUrl:           (cat as any).photoUrl ?? null,
+        gender:             cat.gender,
+        age:                cat.age,
+        weight:             cat.weight,
+        isSterilized:       cat.isSterilized,
+        bodyCondition:      cat.bodyCondition,
+        dailyGramTarget:    cat.dailyGramTarget,
+        dailyCalorieTarget: cat.dailyCalorieTarget,
+        kiloCaloriesPerKg:  cat.kiloCaloriesPerKg,
+        activity:           (cat as any).activity ?? 'normal',
+        feedingSchedule:    cat.feedingSchedule ?? [],
+      }, { merge: true });
       // Terapkan profil lama ke dokumen kucing aktif
       await updateDoc(doc(db, 'cats', cat.id), {
         name:               pendingRestore.name,
@@ -452,7 +504,8 @@ export function CatProfilePage() {
         updatedAt:             new Date().toISOString(),
       });
       setPendingRestore(null);
-    } catch {
+    } catch (err) {
+      console.error('Gagal menerapkan profil:', err);
       setRestoreError('Gagal menerapkan profil. Periksa koneksi dan coba lagi.');
     } finally {
       setRestoring(false);
@@ -616,7 +669,7 @@ export function CatProfilePage() {
         });
       }
       const g = map.get(key)!;
-      g.periods.push({ savedAt: snap.savedAt, endedAt: snap.endedAt });
+      g.periods.push({ savedAt: snap.savedAt, endedAt: snap.endedAt, id: snap.id });
       if (snap.id === 'current') g.isCurrent = true;
       // representative = snapshot dengan savedAt terbaru (paling baru = paling relevan)
       if (snap.savedAt > g.representative.savedAt) {
@@ -938,6 +991,7 @@ export function CatProfilePage() {
                   feedingLogs={feedingLogs}
                   isAdmin={isAdmin}
                   onRestore={!g.isCurrent ? () => setPendingRestore(g.restoreSnapshot) : undefined}
+                  onDelete={!g.isCurrent ? () => setPendingDelete(g) : undefined}
                 />
               ))
             )}
@@ -1052,6 +1106,91 @@ export function CatProfilePage() {
                   {restoring
                     ? <><Loader2 className="w-4 h-4 animate-spin" /> Menerapkan...</>
                     : <><RotateCcw className="w-4 h-4" /> Ya, Terapkan Profil</>}
+                </button>
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* ── MODAL KONFIRMASI HAPUS RIWAYAT ── */}
+      <AnimatePresence>
+        {pendingDelete && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-4 bg-black/50 backdrop-blur-sm"
+            onClick={() => { if (!deleting) setPendingDelete(null); }}
+          >
+            <motion.div
+              initial={{ opacity: 0, y: 40, scale: 0.97 }}
+              animate={{ opacity: 1, y: 0, scale: 1 }}
+              exit={{ opacity: 0, y: 40, scale: 0.97 }}
+              transition={{ type: 'spring', stiffness: 400, damping: 30 }}
+              onClick={(e) => e.stopPropagation()}
+              className="w-full max-w-md bg-white rounded-4xl p-6 shadow-2xl space-y-5"
+            >
+              {/* Header */}
+              <div className="flex items-start justify-between gap-4">
+                <div className="flex items-start gap-4">
+                  <div className="w-12 h-12 bg-red-100 rounded-2xl flex items-center justify-center shrink-0">
+                    <Trash2 className="w-6 h-6 text-red-600" />
+                  </div>
+                  <div>
+                    <p className="font-black text-lg text-gray-900">Hapus Riwayat Profil Ini?</p>
+                    <p className="text-sm text-gray-500 mt-0.5 leading-relaxed">
+                      Riwayat profil <span className="font-bold text-gray-700">{pendingDelete.representative.name}</span> akan dihapus permanen.
+                    </p>
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  aria-label="Tutup"
+                  onClick={() => { if (!deleting) setPendingDelete(null); }}
+                  className="w-8 h-8 rounded-xl bg-gray-100 flex items-center justify-center shrink-0 hover:bg-gray-200 transition-colors"
+                >
+                  <X className="w-4 h-4 text-gray-500" />
+                </button>
+              </div>
+
+              {/* Warning */}
+              <div className="flex items-start gap-3 bg-red-50 border border-red-100 rounded-2xl px-4 py-3">
+                <AlertTriangle className="w-4 h-4 text-red-500 shrink-0 mt-0.5" />
+                <p className="text-xs text-red-700 leading-relaxed">
+                  {pendingDelete.periods.length > 1
+                    ? `${pendingDelete.periods.length} periode penggunaan pada riwayat ini akan dihapus sekaligus. `
+                    : 'Periode penggunaan pada riwayat ini akan dihapus. '}
+                  Tindakan ini <strong>tidak bisa dibatalkan</strong> dan tidak memengaruhi profil yang sedang aktif saat ini.
+                </p>
+              </div>
+
+              {deleteError && (
+                <div className="flex items-center gap-2 bg-red-50 rounded-xl px-4 py-2.5">
+                  <AlertTriangle className="w-4 h-4 text-red-500 shrink-0" />
+                  <p className="text-sm text-red-600 font-semibold">{deleteError}</p>
+                </div>
+              )}
+
+              {/* Buttons */}
+              <div className="flex gap-3">
+                <button
+                  type="button"
+                  onClick={() => { setPendingDelete(null); setDeleteError(null); }}
+                  disabled={deleting}
+                  className="flex-1 py-3.5 rounded-2xl border-2 border-gray-200 text-sm font-black text-gray-600 hover:bg-gray-50 transition-colors disabled:opacity-50"
+                >
+                  Batal
+                </button>
+                <button
+                  type="button"
+                  onClick={handleConfirmDelete}
+                  disabled={deleting}
+                  className="flex-1 py-3.5 rounded-2xl bg-red-600 hover:bg-red-500 text-white text-sm font-black transition-colors disabled:opacity-60 flex items-center justify-center gap-2 shadow-red-200 shadow-md"
+                >
+                  {deleting
+                    ? <><Loader2 className="w-4 h-4 animate-spin" /> Menghapus...</>
+                    : <><Trash2 className="w-4 h-4" /> Ya, Hapus</>}
                 </button>
               </div>
             </motion.div>
