@@ -896,52 +896,54 @@ export function CatProfilePage() {
         </div>
       </div>
 
-      {/* ── RIWAYAT PROFIL ── */}
-      <div className="space-y-5">
+      {/* ── RIWAYAT PROFIL (khusus Admin — mencegah kebocoran data ke non-admin) ── */}
+      {isAdmin && (
+        <div className="space-y-5">
 
-        {/* Header + Search */}
-        <div className="flex items-center justify-between gap-4 flex-wrap px-1">
-          <div>
-            <h3 className="text-2xl font-black text-gray-900">Riwayat Profil Kucing</h3>
-            <p className="text-sm text-gray-400 mt-0.5">
-              {filteredGroups.length} profil unik · {allProfilesResolved.length} entri tercatat
-            </p>
-          </div>
-          <div className="relative">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 pointer-events-none" />
-            <input
-              type="text"
-              placeholder="Cari nama..."
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              className="pl-9 pr-4 py-2.5 rounded-2xl border border-gray-200 bg-white text-sm font-medium outline-none focus:border-amber-400 transition-colors w-48"
-            />
-          </div>
-        </div>
-
-        {/* Scrollable list */}
-        <div className="max-h-175 overflow-y-auto space-y-4 pr-1 scroll-smooth">
-          {filteredGroups.length === 0 ? (
-            <div className="flex flex-col items-center justify-center py-12 bg-white rounded-3xl border border-gray-100">
-              <Search className="w-8 h-8 text-gray-300 mb-3" />
-              <p className="text-sm font-bold text-gray-500">Tidak ditemukan</p>
-              <p className="text-xs text-gray-400 mt-1">
-                Tidak ada profil dengan nama &ldquo;{searchQuery}&rdquo;
+          {/* Header + Search */}
+          <div className="flex items-center justify-between gap-4 flex-wrap px-1">
+            <div>
+              <h3 className="text-2xl font-black text-gray-900">Riwayat Profil Kucing</h3>
+              <p className="text-sm text-gray-400 mt-0.5">
+                {filteredGroups.length} profil unik · {allProfilesResolved.length} entri tercatat
               </p>
             </div>
-          ) : (
-            filteredGroups.map((g) => (
-              <ProfileHistoryCard
-                key={g.key}
-                group={g}
-                feedingLogs={feedingLogs}
-                isAdmin={isAdmin}
-                onRestore={!g.isCurrent ? () => setPendingRestore(g.restoreSnapshot) : undefined}
+            <div className="relative">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 pointer-events-none" />
+              <input
+                type="text"
+                placeholder="Cari nama..."
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                className="pl-9 pr-4 py-2.5 rounded-2xl border border-gray-200 bg-white text-sm font-medium outline-none focus:border-amber-400 transition-colors w-48"
               />
-            ))
-          )}
+            </div>
+          </div>
+
+          {/* Scrollable list */}
+          <div className="max-h-175 overflow-y-auto space-y-4 pr-1 scroll-smooth">
+            {filteredGroups.length === 0 ? (
+              <div className="flex flex-col items-center justify-center py-12 bg-white rounded-3xl border border-gray-100">
+                <Search className="w-8 h-8 text-gray-300 mb-3" />
+                <p className="text-sm font-bold text-gray-500">Tidak ditemukan</p>
+                <p className="text-xs text-gray-400 mt-1">
+                  Tidak ada profil dengan nama &ldquo;{searchQuery}&rdquo;
+                </p>
+              </div>
+            ) : (
+              filteredGroups.map((g) => (
+                <ProfileHistoryCard
+                  key={g.key}
+                  group={g}
+                  feedingLogs={feedingLogs}
+                  isAdmin={isAdmin}
+                  onRestore={!g.isCurrent ? () => setPendingRestore(g.restoreSnapshot) : undefined}
+                />
+              ))
+            )}
+          </div>
         </div>
-      </div>
+      )}
 
       {/* ── MODAL KONFIRMASI GANTI PROFIL ── */}
       <AnimatePresence>

@@ -493,10 +493,6 @@ export function Dashboard() {
   const todayStr = localDateStr();
 
   // Waktu profil kucing aktif ini dibuat/diupdate terakhir.
-  // Dipakai sebagai batas bawah untuk progress/counter HARI INI saja (lihat
-  // todayCountFrom), sehingga ganti profil di hari yang sama tidak melanjutkan
-  // counter profil sebelumnya. Untuk data historis (kalender, chart, riwayat)
-  // dipakai `activePeriods` di bawah, bukan cutoff tunggal ini.
   const profileActiveSince = cat?.profileUpdatedAt ?? 0;
 
   const todayStartMs = useMemo(() => {
@@ -504,9 +500,6 @@ export function Dashboard() {
     d.setHours(0, 0, 0, 0);
     return d.getTime();
   }, []);
-  // todayCountFrom: progress hari ini dihitung sejak awal hari ATAU sejak profil diaktifkan
-  // (mana yang lebih baru), agar ganti profil tidak melanjutkan counter profil sebelumnya.
-  const todayCountFrom = Math.max(todayStartMs, profileActiveSince);
 
   // Semua periode saat profil kucing yang SEDANG AKTIF pernah aktif — termasuk
   // periode lampau kalau profil ini pernah diganti ke profil lain lalu
@@ -516,6 +509,28 @@ export function Dashboard() {
     () => getCurrentProfilePeriods(cat, profileHistory),
     [cat, profileHistory]
   );
+
+  // todayCountFrom: batas bawah utk progress/counter "Hari Ini".
+  // BUG LAMA: pakai cutoff tunggal `profileActiveSince` (= cat.profileUpdatedAt).
+  // Ini benar utk kasus "ganti ke profil LAIN hari ini" (lognya memang beda
+  // identitas, sudah otomatis ke-exclude dari catLogs). TAPI salah utk kasus
+  // "profil YANG SAMA di-restore/disave ulang hari ini" (mis. sempat pindah ke
+  // profil lain lalu balik lagi ke profil ini, atau sekadar edit data) — semua
+  // feeding log dari SEBELUM jam save/restore ikut ke-cut dari tab "Hari Ini",
+  // padahal itu tetap milik identitas yang sama (activePeriods sudah tahu ini).
+  // FIX: pakai periode paling awal HARI INI dari activePeriods (bukan hanya
+  // periode terakhir/profileUpdatedAt), supaya restore-di-hari-yang-sama tidak
+  // menyembunyikan feeding yang sudah tercatat lebih dulu hari itu.
+  const todayCountFrom = useMemo(() => {
+    const periodsToday = activePeriods.filter((p) => p.end > todayStartMs);
+    if (periodsToday.length === 0) {
+      return Math.max(todayStartMs, profileActiveSince);
+    }
+    const earliestStart = Math.min(
+      ...periodsToday.map((p) => Math.max(p.start, todayStartMs))
+    );
+    return earliestStart;
+  }, [activePeriods, todayStartMs, profileActiveSince]);
 
   // catLogs: log yang benar-benar milik profil AKTIF saat ini.
   //   1. catId cocok dengan profil terbaru (cat?.id)
