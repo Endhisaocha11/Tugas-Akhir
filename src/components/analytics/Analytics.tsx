@@ -239,7 +239,7 @@ function FeedingCalendarAnalytics({ feedingLogs, dailyTarget }: { feedingLogs: F
                           </span>
                         </div>
                         <div className="text-right">
-                          <span className="text-xs font-black text-amber-600">{log.amountDispensed}g</span>
+                          <span className="text-xs font-black text-amber-600">{Math.round(log.amountDispensed)}g</span>
                           <span className="text-[9px] text-gray-400 ml-1">{log.notes === 'manual' ? 'M' : 'A'}</span>
                         </div>
                       </div>

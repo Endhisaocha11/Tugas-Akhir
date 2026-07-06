@@ -254,7 +254,7 @@ function FeedingCalendarAnalytics({ feedingLogs, dailyTarget, resetKey }: {
                           isVirtual ? 'text-orange-500' :
                           isMissed  ? 'text-gray-400' :
                           'text-amber-600')}>
-                          {log.amountDispensed}g
+                          {Math.round(log.amountDispensed)}g
                         </span>
                         <span className="text-[9px] text-gray-400 ml-1">
                           {log.notes === 'manual' ? 'M' : isVirtual ? 'A~' : isMissed ? 'A?' : 'A'}
@@ -417,7 +417,7 @@ function CatMonitoringCard({ feedingLogs, bowlWeight, catName, catPhotoUrl }: {
                       {log.notes === 'manual' ? 'Manual' : 'Otomatis'}
                     </span>
                   </div>
-                  <span className="text-xs font-black text-amber-600">{log.amountDispensed}g diberikan</span>
+                  <span className="text-xs font-black text-amber-600">{Math.round(log.amountDispensed)}g diberikan</span>
                 </div>
 
                 {/* Eating indicator - hanya untuk log terbaru (pakai data real bowl weight) */}
@@ -992,7 +992,7 @@ export function Dashboard() {
           </div>
           {catLogs.length > 0 && (
             <p className="text-xs text-gray-400">
-              Pemberian terakhir: <span className="font-bold text-gray-600">{catLogs[0].amountDispensed}g</span>
+              Pemberian terakhir: <span className="font-bold text-gray-600">{Math.round(catLogs[0].amountDispensed)}g</span>
             </p>
           )}
         </div>

@@ -144,9 +144,9 @@ function FeedCard({
       : (manual ? 'Feeding Manual Gagal' : 'Feeding Otomatis Gagal');
 
   const body = ok
-    ? `${log.amountDispensed}g diberikan — sesuai target ${log.amountRequested}g`
+    ? `${Math.round(log.amountDispensed)}g diberikan — sesuai target ${log.amountRequested}g`
     : warn
-      ? `${log.amountDispensed}g diberikan — target ${log.amountRequested}g (toleransi terlampaui)`
+      ? `${Math.round(log.amountDispensed)}g diberikan — target ${log.amountRequested}g (toleransi terlampaui)`
       : `Target ${log.amountRequested}g tidak tercapai — periksa stok & servo`;
 
   const cardClass = cn(

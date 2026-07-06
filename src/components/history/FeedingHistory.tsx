@@ -212,10 +212,10 @@ export function FeedingHistory() {
         })(),
         cat: cat?.name ?? '—',
         portion: `${log.amountRequested}g`,
-        actual: `${(log.amountDispensed ?? 0).toFixed(1)}g`,
+        actual: `${Math.round(log.amountDispensed ?? 0)}g`,
         status: STATUS_MAP[log.status] ?? log.status,
         notes: log.notes === 'manual' ? 'Manual' : 'Terjadwal',
-        isMatch: Number((log.amountDispensed ?? 0).toFixed(1)) >= log.amountRequested * 0.9,
+        isMatch: Math.round(log.amountDispensed ?? 0) >= log.amountRequested * 0.9,
         timestamp: log.timestamp,
       }));
   }, [feedingLogs, cat?.id, activePeriods, filterDate, filterType, filterStatus, search, cat?.name]);
