@@ -17,6 +17,7 @@ import {
   X,
   WifiOff,
   ArrowLeft,
+  HelpCircle,
 } from 'lucide-react';
 
 import { motion, AnimatePresence } from 'framer-motion';
@@ -32,6 +33,8 @@ interface SidebarItem {
   label: string;
   icon: React.ElementType;
   adminOnly?: boolean;
+  /** If set, item renders as an external link (opens in a new tab) instead of switching tabs */
+  href?: string;
 }
 
 const sidebarItems: SidebarItem[] = [
@@ -44,6 +47,7 @@ const sidebarItems: SidebarItem[] = [
   { id: 'notifications',   label: 'Notifications',    icon: Bell },
   { id: 'settings',        label: 'Settings',         icon: Settings,      adminOnly: true },
   { id: 'user-settings',   label: 'User Settings',    icon: Users,         adminOnly: true },
+  { id: 'help',            label: 'Bantuan',          icon: HelpCircle,   href: '/panduan-pawfectcare.pdf' },
 ];
 
 interface DashboardLayoutProps {
@@ -147,6 +151,25 @@ export function DashboardLayout({
       <nav className="flex-1 px-3 py-3 space-y-0.5 overflow-y-auto">
         {filteredItems.map((item) => {
           const isActive = activeTab === item.id;
+
+          // External link items (e.g. "Bantuan" -> PDF) open in a new tab
+          // instead of switching the active dashboard tab.
+          if (item.href) {
+            return (
+              <a
+                key={item.id}
+                href={item.href}
+                target="_blank"
+                rel="noopener noreferrer"
+                aria-label={item.label}
+                className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl transition-all group text-sm text-gray-500 hover:text-gray-800 hover:bg-gray-50 font-medium"
+              >
+                <item.icon className="w-4 h-4 shrink-0 text-gray-400 group-hover:text-gray-600" />
+                <span className="flex-1 text-left">{item.label}</span>
+              </a>
+            );
+          }
+
           return (
             <button
               key={item.id}
