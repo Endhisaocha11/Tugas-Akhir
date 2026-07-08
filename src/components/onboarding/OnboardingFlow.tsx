@@ -755,7 +755,7 @@ export default function OnboardingFlow({
 
                     <p className="text-gray-400 text-lg mt-4 leading-relaxed max-w-2xl">
                       Lengkapi identitas kucing untuk membuat sistem feeding otomatis
-                      yang akurat berdasarkan kondisi tubuh dan kebutuhan nutrisi.
+                      yang akurat berdasarkan kondisi tubuh dan kebutuhan energinya.
                     </p>
                   </div>
 
@@ -860,7 +860,7 @@ export default function OnboardingFlow({
 
                     <p className="text-gray-400 text-base lg:text-lg mt-4 leading-relaxed max-w-3xl">
                       Data ini digunakan untuk menghitung kebutuhan energi harian,
-                      feeding otomatis, dan rekomendasi nutrisi ideal.
+                      feeding otomatis, dan target berat badan ideal kucingmu. Pastikan data yang dimasukkan akurat agar sistem feeding bekerja optimal.
                     </p>
                   </div>
 
@@ -1372,12 +1372,12 @@ export default function OnboardingFlow({
                   </p>
 
                   <h1 className="text-3xl lg:text-5xl font-black text-amber-950 mt-3">
-                    Rencana Nutrisi Kustom Anda Siap!
+                    Rencana Kebutuhan Energi Harian Siap!
                   </h1>
 
                   <p className="text-base lg:text-lg text-gray-400 mt-4 max-w-4xl mx-auto leading-relaxed">
                     Berdasarkan data fisik dan kondisi kesehatan,
-                    sistem telah menghitung kebutuhan feeding otomatis harian.
+                    sistem telah menghitung kebutuhan energi otomatis harian.
                   </p>
                 </div>
 
